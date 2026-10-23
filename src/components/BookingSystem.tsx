@@ -25,7 +25,9 @@ import {
   ShieldCheck,
   Ban,
   CheckCircle2,
+  BookOpen,
 } from 'lucide-react';
+import { GuestGuideModal } from './GuestGuideModal';
 
 interface BookingSystemProps {
   checkInDate: string;
@@ -65,6 +67,7 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [stepSuccessNotice, setStepSuccessNotice] = useState<string | null>(null);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Calculate unavailable dates (excluding currently confirmed reservation so it doesn't conflict with itself)
   const otherReservations = existingReservations.filter(
@@ -833,6 +836,37 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                   </div>
                 </div>
               </div>
+
+              {/* Prominent Guía del Huésped Card */}
+              <div className="bg-gradient-to-br from-[#4D7080]/10 via-[#4D7080]/5 to-amber-500/10 rounded-2xl p-5 sm:p-6 border border-[#4D7080]/25 flex flex-col md:flex-row items-center justify-between gap-5 shadow-xs">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-[#4D7080] text-white flex items-center justify-center shrink-0 shadow-md">
+                    <BookOpen className="w-6 h-6 text-amber-300" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-[#4D7080] bg-[#4D7080]/15 px-2.5 py-0.5 rounded-full">
+                        Importante para tu estadía
+                      </span>
+                    </div>
+                    <h4 className="text-base sm:text-lg font-extrabold text-slate-900">
+                      Reglamento, Uso de Artefactos & Recomendaciones de Cruz del Eje
+                    </h4>
+                    <p className="text-xs sm:text-sm text-slate-600 max-w-xl">
+                      Tené a mano las normas de convivencia, cómo activar la climatización, instrucciones del termotanque, qué conocer y los mejores lugares para comer o pedir delivery.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsGuideOpen(true)}
+                  className="w-full md:w-auto px-7 py-3.5 bg-[#4D7080] hover:bg-[#395663] text-white font-black text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 shrink-0 border border-[#4D7080] hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <BookOpen className="w-4 h-4 text-amber-300" />
+                  <span>GUÍA DEL HUÉSPED</span>
+                </button>
+              </div>
             </div>
 
             {/* Next Steps Buttons */}
@@ -846,6 +880,15 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                 <Send className="w-4 h-4" />
                 <span>Confirmar por WhatsApp con Rodrigo</span>
               </a>
+
+              <button
+                type="button"
+                onClick={() => setIsGuideOpen(true)}
+                className="w-full sm:w-auto px-6 py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>GUÍA DEL HUÉSPED</span>
+              </button>
 
               <button
                 onClick={handlePrintVoucher}
@@ -862,6 +905,14 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                 Hacer otra reserva
               </button>
             </div>
+
+            {/* Interactive Guest Guide Modal */}
+            <GuestGuideModal
+              isOpen={isGuideOpen}
+              onClose={() => setIsGuideOpen(false)}
+              reservationCode={confirmedReservation.code}
+              guestName={confirmedReservation.guestName}
+            />
           </div>
         )}
       </div>

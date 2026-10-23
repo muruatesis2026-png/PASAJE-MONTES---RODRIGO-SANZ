@@ -16,6 +16,7 @@ import { Footer } from './components/Footer';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { BrochureModal } from './components/BrochureModal';
 import { MyReservationsModal } from './components/MyReservationsModal';
+import { GuestGuideModal } from './components/GuestGuideModal';
 import { HostDashboardPage } from './components/HostDashboardPage';
 import { INITIAL_RESERVATIONS, LODGING_INFO } from './data/lodgingData';
 import { Reservation } from './types';
@@ -129,6 +130,7 @@ export default function App() {
   // Modals for public users
   const [isBrochureOpen, setIsBrochureOpen] = useState(false);
   const [isMyBookingOpen, setIsMyBookingOpen] = useState(false);
+  const [isGuestGuideOpen, setIsGuestGuideOpen] = useState(false);
 
   // Listen to browser navigation (back/forward)
   useEffect(() => {
@@ -183,6 +185,7 @@ export default function App() {
         onOpenBrochure={() => setIsBrochureOpen(true)}
         onOpenBooking={scrollToBooking}
         onOpenMyBooking={() => setIsMyBookingOpen(true)}
+        onOpenGuide={() => setIsGuestGuideOpen(true)}
         onOpenAdmin={() => navigateTo('anfitrion')}
       />
 
@@ -248,6 +251,7 @@ export default function App() {
         onOpenBooking={scrollToBooking}
         onOpenBrochure={() => setIsBrochureOpen(true)}
         onOpenMyBooking={() => setIsMyBookingOpen(true)}
+        onOpenGuide={() => setIsGuestGuideOpen(true)}
         onOpenAdmin={() => navigateTo('anfitrion')}
       />
 
@@ -266,6 +270,12 @@ export default function App() {
         isOpen={isMyBookingOpen}
         onClose={() => setIsMyBookingOpen(false)}
         reservations={reservations}
+      />
+
+      {/* Official Guest Guide Modal */}
+      <GuestGuideModal
+        isOpen={isGuestGuideOpen}
+        onClose={() => setIsGuestGuideOpen(false)}
       />
     </div>
   );

@@ -7,6 +7,7 @@ interface FooterProps {
   onOpenBooking: () => void;
   onOpenBrochure: () => void;
   onOpenMyBooking: () => void;
+  onOpenGuide?: () => void;
   onOpenAdmin: () => void;
 }
 
@@ -14,6 +15,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenBooking,
   onOpenBrochure,
   onOpenMyBooking,
+  onOpenGuide,
   onOpenAdmin,
 }) => {
   return (
@@ -119,6 +121,16 @@ export const Footer: React.FC<FooterProps> = ({
                   Consultar Mi Reserva
                 </button>
               </li>
+              {onOpenGuide && (
+                <li>
+                  <button
+                    onClick={onOpenGuide}
+                    className="hover:text-white transition-colors text-left text-amber-300 font-semibold flex items-center gap-1"
+                  >
+                    <span>📖 Guía del Huésped</span>
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

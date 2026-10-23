@@ -7,6 +7,7 @@ interface NavbarProps {
   onOpenBrochure: () => void;
   onOpenBooking: () => void;
   onOpenMyBooking: () => void;
+  onOpenGuide?: () => void;
   onOpenAdmin?: () => void;
 }
 
@@ -14,6 +15,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenBrochure,
   onOpenBooking,
   onOpenMyBooking,
+  onOpenGuide,
   onOpenAdmin,
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -72,6 +74,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Phone className="w-3.5 h-3.5 text-emerald-400" />
               <span>Rodrigo Sanz ({LODGING_INFO.phoneDisplay})</span>
             </a>
+            <span className="text-white/30 hidden md:inline">|</span>
+            {onOpenGuide && (
+              <button
+                onClick={onOpenGuide}
+                className="hidden md:inline hover:underline text-amber-200 hover:text-white font-semibold"
+              >
+                Guía del Huésped
+              </button>
+            )}
             <span className="text-white/30 hidden md:inline">|</span>
             <button
               onClick={onOpenMyBooking}
@@ -198,6 +209,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <span>Mi Reserva</span>
                 </button>
+                {onOpenGuide && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenGuide();
+                    }}
+                    className="col-span-2 flex items-center justify-center gap-1.5 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-300/30 rounded-lg font-bold"
+                  >
+                    <span>📖 Guía del Huésped (PDF & Normas)</span>
+                  </button>
+                )}
               </div>
 
               <a

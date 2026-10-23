@@ -11,7 +11,9 @@ import {
   AlertCircle,
   Copy,
   Check,
+  BookOpen,
 } from 'lucide-react';
+import { GuestGuideModal } from './GuestGuideModal';
 
 interface MyReservationsModalProps {
   isOpen: boolean;
@@ -27,6 +29,7 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [searched, setSearched] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [selectedGuideReservation, setSelectedGuideReservation] = useState<Reservation | null>(null);
 
   if (!isOpen) return null;
 
@@ -185,7 +188,16 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
                   </div>
                 )}
 
-                <div className="pt-2 flex justify-end">
+                <div className="pt-2 flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGuideReservation(res)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-xs transition-colors"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>GUÍA DEL HUÉSPED</span>
+                  </button>
+
                   <a
                     href={`https://wa.me/${LODGING_INFO.phoneRaw}?text=Hola%20Rodrigo,%20consulto%20por%20mi%20reserva%20código%20${res.code}.`}
                     target="_blank"
@@ -200,6 +212,16 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Guest Guide Modal */}
+        {selectedGuideReservation && (
+          <GuestGuideModal
+            isOpen={!!selectedGuideReservation}
+            onClose={() => setSelectedGuideReservation(null)}
+            reservationCode={selectedGuideReservation.code}
+            guestName={selectedGuideReservation.guestName}
+          />
+        )}
       </div>
     </div>
   );
