@@ -85,6 +85,16 @@ const DEFAULT_SETTINGS = {
   hostPin: '2026', // Rodrigo's default PIN to enter the private admin page
   blockedDates: [], // Strings array of 'YYYY-MM-DD'
   discountPercentage: 12,
+  promoBanner: {
+    enabled: true,
+    badge: 'Promo 3+ Noches',
+    text: 'Al reservar 3 o más noches recibís una bonificación especial en el precio total.',
+    mobileText: 'Bonificación especial a partir de 3 noches.',
+    theme: 'emerald',
+    icon: 'sparkles',
+    actionText: 'Reservar ahora',
+    actionType: 'booking',
+  },
 };
 
 function readReservations() {
@@ -116,7 +126,15 @@ function readSettings() {
       return DEFAULT_SETTINGS;
     }
     const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      promoBanner: {
+        ...DEFAULT_SETTINGS.promoBanner,
+        ...(parsed.promoBanner || {}),
+      },
+    };
   } catch (err) {
     console.error('Error reading settings:', err);
     return DEFAULT_SETTINGS;

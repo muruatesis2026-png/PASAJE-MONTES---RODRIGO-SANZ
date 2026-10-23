@@ -1,11 +1,23 @@
-import { Reservation } from '../types';
+import { Reservation, PromoBannerConfig } from '../types';
 import { INITIAL_RESERVATIONS } from '../data/lodgingData';
+
+export const DEFAULT_PROMO_BANNER: PromoBannerConfig = {
+  enabled: true,
+  badge: 'Promo 3+ Noches',
+  text: 'Al reservar 3 o más noches recibís una bonificación especial en el precio total.',
+  mobileText: 'Bonificación especial a partir de 3 noches.',
+  theme: 'emerald',
+  icon: 'sparkles',
+  actionText: 'Reservar ahora',
+  actionType: 'booking',
+};
 
 export interface HostSettings {
   baseNightPrice: number;
   hostPin: string;
   blockedDates: string[]; // YYYY-MM-DD
   discountPercentage: number;
+  promoBanner: PromoBannerConfig;
 }
 
 export interface AvailabilityData {
@@ -155,21 +167,47 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
-        return data;
+        const merged: HostSettings = {
+          baseNightPrice: data.baseNightPrice ?? 45000,
+          hostPin: data.hostPin ?? '2026',
+          blockedDates: data.blockedDates ?? [],
+          discountPercentage: data.discountPercentage ?? 12,
+          promoBanner: {
+            ...DEFAULT_PROMO_BANNER,
+            ...(data.promoBanner || {}),
+          },
+        };
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+        return merged;
       }
     } catch {
       // Fallback
     }
     const local = localStorage.getItem(SETTINGS_KEY);
-    return local
-      ? JSON.parse(local)
-      : {
-          baseNightPrice: 45000,
-          hostPin: '2026',
-          blockedDates: [],
-          discountPercentage: 12,
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        return {
+          baseNightPrice: parsed.baseNightPrice ?? 45000,
+          hostPin: parsed.hostPin ?? '2026',
+          blockedDates: parsed.blockedDates ?? [],
+          discountPercentage: parsed.discountPercentage ?? 12,
+          promoBanner: {
+            ...DEFAULT_PROMO_BANNER,
+            ...(parsed.promoBanner || {}),
+          },
         };
+      } catch {
+        // use default
+      }
+    }
+    return {
+      baseNightPrice: 45000,
+      hostPin: '2026',
+      blockedDates: [],
+      discountPercentage: 12,
+      promoBanner: DEFAULT_PROMO_BANNER,
+    };
   },
 
   async updateSettings(settings: Partial<HostSettings>): Promise<HostSettings> {

@@ -1,7 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Logo } from './Logo';
 import { LODGING_INFO } from '../data/lodgingData';
-import { Phone, Calendar, Menu, X, FileText, Sparkles, MapPin } from 'lucide-react';
+import {
+  Phone,
+  Calendar,
+  Menu,
+  X,
+  FileText,
+  Sparkles,
+  MapPin,
+  Tag,
+  Gift,
+  Percent,
+  Flame,
+  Heart,
+  Bell,
+  ArrowRight,
+} from 'lucide-react';
+import { PromoBannerConfig } from '../types';
 
 interface NavbarProps {
   onOpenBrochure: () => void;
@@ -9,6 +25,46 @@ interface NavbarProps {
   onOpenMyBooking: () => void;
   onOpenGuide?: () => void;
   onOpenAdmin?: () => void;
+  promoBanner?: PromoBannerConfig;
+}
+
+function getBadgeStyles(theme?: string) {
+  switch (theme) {
+    case 'amber':
+      return 'bg-amber-400/20 text-amber-200 border-amber-400/40';
+    case 'blue':
+      return 'bg-sky-400/20 text-sky-200 border-sky-400/40';
+    case 'rose':
+      return 'bg-rose-400/20 text-rose-200 border-rose-400/40';
+    case 'purple':
+      return 'bg-purple-400/20 text-purple-200 border-purple-400/40';
+    case 'slate':
+      return 'bg-slate-700/60 text-slate-200 border-slate-500/40';
+    case 'emerald':
+    default:
+      return 'bg-[#4D7080] text-emerald-200 border-emerald-300/30';
+  }
+}
+
+function renderPromoIcon(icon?: string) {
+  const className = 'w-3 h-3 shrink-0';
+  switch (icon) {
+    case 'tag':
+      return <Tag className={className} />;
+    case 'gift':
+      return <Gift className={className} />;
+    case 'percent':
+      return <Percent className={className} />;
+    case 'flame':
+      return <Flame className={className} />;
+    case 'heart':
+      return <Heart className={className} />;
+    case 'bell':
+      return <Bell className={className} />;
+    case 'sparkles':
+    default:
+      return <Sparkles className={className} />;
+  }
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -17,6 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenMyBooking,
   onOpenGuide,
   onOpenAdmin,
+  promoBanner,
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -51,20 +108,55 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Top Banner */}
       <div className="bg-[#375663] text-white text-xs py-2 px-4 border-b border-white/10">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 bg-[#4D7080] text-emerald-200 px-2 py-0.5 rounded-full text-[11px] font-semibold border border-emerald-300/30">
-              <Sparkles className="w-3 h-3 text-emerald-300" />
-              Promo 3+ Noches
-            </span>
-            <span className="hidden sm:inline text-slate-200">
-              Al reservar 3 o más noches recibís una bonificación especial en el precio total.
-            </span>
-            <span className="sm:hidden text-slate-200">
-              Bonificación especial a partir de 3 noches.
-            </span>
-          </div>
+          {promoBanner && promoBanner.enabled ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border shadow-xs transition-colors ${getBadgeStyles(
+                  promoBanner.theme
+                )}`}
+              >
+                {renderPromoIcon(promoBanner.icon)}
+                <span>{promoBanner.badge}</span>
+              </span>
+              <span className="hidden sm:inline text-slate-200">
+                {promoBanner.text}
+              </span>
+              <span className="sm:hidden text-slate-200">
+                {promoBanner.mobileText || promoBanner.text}
+              </span>
+              {promoBanner.actionText && promoBanner.actionType && promoBanner.actionType !== 'none' && (
+                promoBanner.actionType === 'whatsapp' ? (
+                  <a
+                    href={`https://wa.me/${LODGING_INFO.phoneRaw}?text=${encodeURIComponent(
+                      `Hola Rodrigo, te consulto por la promo "${promoBanner.badge}": ${promoBanner.text}`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300 hover:text-white underline underline-offset-2 transition-colors ml-1"
+                  >
+                    <span>{promoBanner.actionText}</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </a>
+                ) : (
+                  <button
+                    onClick={onOpenBooking}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300 hover:text-white underline underline-offset-2 transition-colors ml-1 cursor-pointer"
+                  >
+                    <span>{promoBanner.actionText}</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                )
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-slate-300 text-xs">
+              <span className="font-semibold text-white">Pasaje Montes</span>
+              <span className="text-white/40">·</span>
+              <span>Alojamiento temporario en Cruz del Eje, Córdoba</span>
+            </div>
+          )}
 
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex items-center gap-4 text-[11px] ml-auto">
             <a
               href={`https://wa.me/${LODGING_INFO.phoneRaw}?text=Hola%20Rodrigo,%20te%20escribo%20desde%20la%20web%20de%20Pasaje%20Montes%20para%20consultar%20por%20disponibilidad.`}
               target="_blank"

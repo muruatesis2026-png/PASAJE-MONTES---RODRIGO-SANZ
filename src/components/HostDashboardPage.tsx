@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Reservation } from '../types';
+import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon } from '../types';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
-import { api, HostSettings } from '../services/api';
+import { api, HostSettings, DEFAULT_PROMO_BANNER } from '../services/api';
 import { formatDate, formatFriendlyDate, getAllUnavailableDates, getDaysDifference, addDays } from '../utils/dateUtils';
 import { Logo } from './Logo';
 import {
@@ -36,10 +36,124 @@ import {
   ChevronRight,
   Ban,
   AlertTriangle,
+  Megaphone,
+  Sparkles,
+  Tag,
+  Gift,
+  Percent,
+  Heart,
+  Flame,
+  Bell,
+  ArrowRight,
+  Smartphone,
+  Monitor,
 } from 'lucide-react';
 
 interface HostDashboardPageProps {
   onBackToPublicSite: () => void;
+}
+
+const PROMO_THEME_OPTIONS: { id: PromoBannerTheme; label: string; chipClass: string; badgeClasses: string }[] = [
+  { id: 'emerald', label: 'Verde Esmeralda', chipClass: 'bg-emerald-600', badgeClasses: 'bg-[#4D7080] text-emerald-200 border-emerald-300/30' },
+  { id: 'amber', label: 'Dorado / Ámbar', chipClass: 'bg-amber-500', badgeClasses: 'bg-amber-400/20 text-amber-200 border-amber-400/40' },
+  { id: 'blue', label: 'Azul Océano', chipClass: 'bg-sky-500', badgeClasses: 'bg-sky-400/20 text-sky-200 border-sky-400/40' },
+  { id: 'purple', label: 'Púrpura Exclusivo', chipClass: 'bg-purple-600', badgeClasses: 'bg-purple-400/20 text-purple-200 border-purple-400/40' },
+  { id: 'rose', label: 'Rosa Coral / Rubí', chipClass: 'bg-rose-500', badgeClasses: 'bg-rose-400/20 text-rose-200 border-rose-400/40' },
+  { id: 'slate', label: 'Gris Pizarra / Neutro', chipClass: 'bg-slate-600', badgeClasses: 'bg-slate-700/60 text-slate-200 border-slate-500/40' },
+];
+
+const PROMO_ICON_OPTIONS: { id: PromoBannerIcon; label: string }[] = [
+  { id: 'sparkles', label: '✨ Chispas / Destacado' },
+  { id: 'tag', label: '🏷️ Etiqueta de Descuento' },
+  { id: 'gift', label: '🎁 Regalo / Beneficio' },
+  { id: 'percent', label: '% Porcentaje OFF' },
+  { id: 'flame', label: '🔥 Oferta / Tendencia' },
+  { id: 'heart', label: '❤️ Escapada / Relax' },
+  { id: 'bell', label: '🔔 Anuncio Importante' },
+];
+
+const PROMO_PRESETS = [
+  {
+    title: '🌟 Promo 3+ Noches (Actual)',
+    badge: 'Promo 3+ Noches',
+    text: 'Al reservar 3 o más noches recibís una bonificación especial en el precio total.',
+    mobileText: 'Bonificación especial a partir de 3 noches.',
+    theme: 'emerald' as PromoBannerTheme,
+    icon: 'sparkles' as PromoBannerIcon,
+    actionText: 'Reservar ahora',
+    actionType: 'booking' as const,
+  },
+  {
+    title: '🏖️ Escapada Fin de Semana',
+    badge: 'Escapada Finde',
+    text: 'Desconectate en Cruz del Eje. Departamento completo con cochera cubierta y asador.',
+    mobileText: 'Cochera techada y asador incluidos.',
+    theme: 'amber' as PromoBannerTheme,
+    icon: 'heart' as PromoBannerIcon,
+    actionText: 'Ver fechas',
+    actionType: 'booking' as const,
+  },
+  {
+    title: '☀️ Temporada Verano / Relax',
+    badge: 'Temporada Verano',
+    text: '¡Aire acondicionado, WiFi veloz y comodidad absoluta! Asegurá tus fechas con tiempo.',
+    mobileText: 'Aire acondicionado y comodidad absoluta.',
+    theme: 'blue' as PromoBannerTheme,
+    icon: 'flame' as PromoBannerIcon,
+    actionText: 'Consultar',
+    actionType: 'booking' as const,
+  },
+  {
+    title: '🏷️ 15% OFF Reserva Directa',
+    badge: '15% OFF Directo',
+    text: 'Aprovechá 15% de descuento reservando de forma directa sin comisiones de intermediarios.',
+    mobileText: '15% OFF reservando directo.',
+    theme: 'purple' as PromoBannerTheme,
+    icon: 'percent' as PromoBannerIcon,
+    actionText: 'Aprovechar Promo',
+    actionType: 'booking' as const,
+  },
+  {
+    title: '💬 Atención Personalizada WhatsApp',
+    badge: 'Atención Directa',
+    text: '¿Dudas sobre tu estadía? Hablá directo con Rodrigo Sanz para tarifas a medida y grupos.',
+    mobileText: 'Hablá directo con Rodrigo por WhatsApp.',
+    theme: 'emerald' as PromoBannerTheme,
+    icon: 'bell' as PromoBannerIcon,
+    actionText: 'Escribir a Rodrigo',
+    actionType: 'whatsapp' as const,
+  },
+  {
+    title: '🎁 Estadía Prolongada (7+ Noches)',
+    badge: 'Beneficio 7+ Noches',
+    text: 'Tarifa súper preferencial para vacaciones o viajes de trabajo prolongados.',
+    mobileText: 'Tarifa preferencial para 7+ noches.',
+    theme: 'rose' as PromoBannerTheme,
+    icon: 'gift' as PromoBannerIcon,
+    actionText: 'Consultar tarifa',
+    actionType: 'whatsapp' as const,
+  },
+];
+
+function renderPreviewIcon(icon?: string) {
+  const className = 'w-3.5 h-3.5 shrink-0';
+  switch (icon) {
+    case 'tag':
+      return <Tag className={className} />;
+    case 'gift':
+      return <Gift className={className} />;
+    case 'percent':
+      return <Percent className={className} />;
+    case 'flame':
+      return <Flame className={className} />;
+    case 'heart':
+      return <Heart className={className} />;
+    case 'bell':
+      return <Bell className={className} />;
+    case 'sparkles':
+    default:
+      return <Sparkles className={className} />;
+  }
 }
 
 export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPublicSite }) => {
@@ -59,9 +173,22 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     hostPin: '2026',
     blockedDates: [],
     discountPercentage: 12,
+    promoBanner: DEFAULT_PROMO_BANNER,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'reservas' | 'nueva' | 'calendario' | 'configuracion'>('calendario');
+  const [activeTab, setActiveTab] = useState<'reservas' | 'nueva' | 'calendario' | 'promos' | 'configuracion'>('calendario');
+
+  // Promo Banner state
+  const [promoEnabled, setPromoEnabled] = useState(true);
+  const [promoBadge, setPromoBadge] = useState('Promo 3+ Noches');
+  const [promoText, setPromoText] = useState('Al reservar 3 o más noches recibís una bonificación especial en el precio total.');
+  const [promoMobileText, setPromoMobileText] = useState('Bonificación especial a partir de 3 noches.');
+  const [promoTheme, setPromoTheme] = useState<PromoBannerTheme>('emerald');
+  const [promoIcon, setPromoIcon] = useState<PromoBannerIcon>('sparkles');
+  const [promoActionText, setPromoActionText] = useState('Reservar ahora');
+  const [promoActionType, setPromoActionType] = useState<'booking' | 'whatsapp' | 'none'>('booking');
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [savingPromo, setSavingPromo] = useState(false);
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<'all' | 'pendiente_sena' | 'confirmada' | 'cancelada'>('all');
@@ -101,6 +228,16 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       setEditPrice(setts.baseNightPrice);
       setEditPin(setts.hostPin);
       setEditDiscount(setts.discountPercentage);
+      if (setts.promoBanner) {
+        setPromoEnabled(setts.promoBanner.enabled ?? true);
+        setPromoBadge(setts.promoBanner.badge || 'Promo 3+ Noches');
+        setPromoText(setts.promoBanner.text || '');
+        setPromoMobileText(setts.promoBanner.mobileText || '');
+        setPromoTheme(setts.promoBanner.theme || 'emerald');
+        setPromoIcon(setts.promoBanner.icon || 'sparkles');
+        setPromoActionText(setts.promoBanner.actionText || '');
+        setPromoActionType(setts.promoBanner.actionType || 'none');
+      }
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -179,6 +316,46 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleSavePromoBanner = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSavingPromo(true);
+    try {
+      const bannerPayload: PromoBannerConfig = {
+        enabled: promoEnabled,
+        badge: promoBadge.trim() || 'Promo Especial',
+        text: promoText.trim() || 'Consultá nuestras promociones y beneficios exclusivos.',
+        mobileText: promoMobileText.trim() || undefined,
+        theme: promoTheme,
+        icon: promoIcon,
+        actionText: promoActionText.trim() || undefined,
+        actionType: promoActionType,
+      };
+
+      const updated = await api.updateSettings({
+        promoBanner: bannerPayload,
+      });
+      setSettings(updated);
+      showTemporaryNotice('✓ Barra de promociones y beneficios guardada con éxito en la base de datos.');
+    } catch (err) {
+      console.error(err);
+      alert('Error al guardar la barra de promociones.');
+    } finally {
+      setSavingPromo(false);
+    }
+  };
+
+  const handleApplyPreset = (preset: (typeof PROMO_PRESETS)[0]) => {
+    setPromoBadge(preset.badge);
+    setPromoText(preset.text);
+    setPromoMobileText(preset.mobileText || '');
+    setPromoTheme(preset.theme);
+    setPromoIcon(preset.icon);
+    setPromoActionText(preset.actionText || '');
+    setPromoActionType(preset.actionType || 'none');
+    setPromoEnabled(true);
+    showTemporaryNotice(`Plantilla "${preset.title}" cargada en el formulario. Guardá para aplicarla.`);
   };
 
   // Toggle single date block via calendar click
@@ -661,6 +838,23 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             >
               <Plus className="w-4 h-4" />
               <span>+ Cargar Reserva Manual</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('promos')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 ${
+                activeTab === 'promos'
+                  ? 'bg-[#4D7080] text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Megaphone className="w-4 h-4 text-amber-500" />
+              <span>Promos & Barra Superior</span>
+              {promoEnabled ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-400" title="Activa en la web"></span>
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-slate-300" title="Oculta"></span>
+              )}
             </button>
 
             <button
@@ -1238,9 +1432,405 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
           </div>
         )}
 
+        {/* TAB: GESTIÓN DE PROMOS & BARRA SUPERIOR */}
+        {activeTab === 'promos' && (
+          <div className="space-y-6 max-w-4xl mx-auto">
+            {/* Header info */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                    <Megaphone className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-xl font-extrabold text-slate-900">
+                    Gestión de Promociones y Barra Superior
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-600 mt-2 max-w-2xl leading-relaxed">
+                  Configurá el anuncio que aparece <strong>arriba de todo en la cabecera de la página web pública</strong>. Podés cambiar el mensaje, el distintivo, los colores, beneficios especiales por temporada y el botón de acción en tiempo real.
+                </p>
+              </div>
+
+              <div className="shrink-0">
+                {promoEnabled ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Barra Activa en la Web
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                    Barra Oculta
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Live Interactive Preview Card */}
+            <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-7 shadow-lg border border-slate-800 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                  <Eye className="w-4 h-4 text-emerald-400" />
+                  <span>Vista Previa en Vivo (Así se verá arriba de todo en tu sitio web)</span>
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('desktop')}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold transition-all ${
+                      previewMode === 'desktop'
+                        ? 'bg-[#4D7080] text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                    <span>PC / Notebook</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('mobile')}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold transition-all ${
+                      previewMode === 'mobile'
+                        ? 'bg-[#4D7080] text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>Celular</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Simulated Top Announcement Bar */}
+              <div
+                className={`transition-all duration-300 mx-auto ${
+                  previewMode === 'mobile' ? 'max-w-md' : 'w-full'
+                }`}
+              >
+                <div className="bg-[#375663] text-white text-xs py-2.5 px-4 rounded-xl border border-white/10 shadow-inner">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5">
+                    {promoEnabled ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Dynamic Badge */}
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border shadow-xs transition-colors ${
+                            PROMO_THEME_OPTIONS.find((t) => t.id === promoTheme)?.badgeClasses ||
+                            'bg-[#4D7080] text-emerald-200 border-emerald-300/30'
+                          }`}
+                        >
+                          {renderPreviewIcon(promoIcon)}
+                          <span>{promoBadge || 'Distintivo'}</span>
+                        </span>
+
+                        {/* Text */}
+                        <span className="text-slate-200 text-xs">
+                          {previewMode === 'mobile'
+                            ? promoMobileText || promoText || 'Texto promocional para celulares'
+                            : promoText || 'Texto promocional para computadoras'}
+                        </span>
+
+                        {/* Optional Action Button */}
+                        {promoActionText && promoActionType !== 'none' && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300 underline underline-offset-2 ml-1">
+                            <span>{promoActionText}</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-slate-300 text-xs">
+                        <span className="font-semibold text-white">Pasaje Montes</span>
+                        <span className="text-white/40">·</span>
+                        <span>Alojamiento temporario en Cruz del Eje</span>
+                      </div>
+                    )}
+
+                    {/* Right side contact (visible on desktop preview) */}
+                    {previewMode === 'desktop' && (
+                      <div className="flex items-center gap-3 text-[11px] text-slate-300 ml-auto">
+                        <span className="flex items-center gap-1 text-emerald-300">
+                          <Phone className="w-3 h-3" />
+                          <span>Rodrigo Sanz ({LODGING_INFO.phoneDisplay})</span>
+                        </span>
+                        <span className="text-white/20">|</span>
+                        <span className="text-amber-200 font-medium">Guía del Huésped</span>
+                        <span className="text-white/20">|</span>
+                        <span>Consultar Mi Reserva</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400 text-center">
+                Cualquier cambio que realices abajo se refleja de inmediato en esta vista previa.
+              </p>
+            </div>
+
+            {/* Quick Templates / Presets */}
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>Plantillas Rápidas de Promociones</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Hacé clic en cualquiera para cargar sus textos y colores listos para usar:
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                {PROMO_PRESETS.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleApplyPreset(preset)}
+                    className="text-left p-3 rounded-2xl border border-slate-200 hover:border-[#4D7080] hover:bg-slate-50/80 transition-all group flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="text-xs font-bold text-slate-800 group-hover:text-[#375663]">
+                          {preset.title}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            PROMO_THEME_OPTIONS.find((t) => t.id === preset.theme)?.badgeClasses || ''
+                          }`}
+                        >
+                          {preset.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 line-clamp-2">
+                        {preset.text}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-emerald-600 font-bold mt-2 inline-flex items-center gap-1 group-hover:underline">
+                      <span>Cargar esta plantilla</span>
+                      <ArrowRight className="w-2.5 h-2.5" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Main Form */}
+            <form onSubmit={handleSavePromoBanner} className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
+              {/* Enable / Disable toggle */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+                <div>
+                  <span className="block text-sm font-bold text-slate-900">
+                    ¿Mostrar la barra de promociones en la página web?
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    Si la desactivás, los visitantes verán solo la cabecera limpia con datos de contacto.
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={promoEnabled}
+                    onChange={(e) => setPromoEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  <span className="ml-3 text-xs font-bold text-slate-700">
+                    {promoEnabled ? 'Activada' : 'Desactivada'}
+                  </span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Badge Text */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Texto del Distintivo / Etiqueta *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={promoBadge}
+                    onChange={(e) => setPromoBadge(e.target.value)}
+                    placeholder="Ej: Promo 3+ Noches"
+                    className="w-full px-3 py-2.5 text-xs font-bold border border-slate-300 rounded-xl focus:border-[#4D7080] focus:ring-1 focus:ring-[#4D7080]"
+                  />
+                  <span className="text-[11px] text-slate-400 block mt-1">
+                    Es la píldora destacada al comienzo (ej: &quot;Promo 3+ Noches&quot;, &quot;Escapada Finde&quot;).
+                  </span>
+                </div>
+
+                {/* Theme selection */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Color del Distintivo
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {PROMO_THEME_OPTIONS.map((theme) => (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        onClick={() => setPromoTheme(theme.id)}
+                        className={`p-2 rounded-xl text-[11px] font-semibold border flex items-center gap-1.5 transition-all ${
+                          promoTheme === theme.id
+                            ? 'border-[#4D7080] bg-slate-100 ring-2 ring-[#4D7080]/30 font-bold'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <span className={`w-3 h-3 rounded-full shrink-0 ${theme.chipClass}`}></span>
+                        <span className="truncate">{theme.label.split(' ')[0]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Icon Selection */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Ícono del Distintivo
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {PROMO_ICON_OPTIONS.map((iconOpt) => (
+                      <button
+                        key={iconOpt.id}
+                        type="button"
+                        onClick={() => setPromoIcon(iconOpt.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1.5 transition-all ${
+                          promoIcon === iconOpt.id
+                            ? 'bg-[#4D7080] text-white border-[#4D7080] shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {renderPreviewIcon(iconOpt.id)}
+                        <span>{iconOpt.label.split(' ')[1] || iconOpt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Main Message for PC */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Mensaje Principal (Para Computadoras y Tablets) *
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={promoText}
+                    onChange={(e) => setPromoText(e.target.value)}
+                    placeholder="Ej: Al reservar 3 o más noches recibís una bonificación especial en el precio total."
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:border-[#4D7080] focus:ring-1 focus:ring-[#4D7080]"
+                  />
+                  <span className="text-[11px] text-slate-400 block mt-1">
+                    Texto completo que se mostrará en pantallas medianas y grandes.
+                  </span>
+                </div>
+
+                {/* Short message for mobile */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Mensaje Corto para Celulares (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={promoMobileText}
+                    onChange={(e) => setPromoMobileText(e.target.value)}
+                    placeholder="Ej: Bonificación especial a partir de 3 noches."
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:border-[#4D7080] focus:ring-1 focus:ring-[#4D7080]"
+                  />
+                  <span className="text-[11px] text-slate-400 block mt-1">
+                    Si lo dejas vacío, en celulares se usará el mensaje principal.
+                  </span>
+                </div>
+
+                {/* Action Link Type */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Acción al hacer Clic en la Promo
+                  </label>
+                  <select
+                    value={promoActionType}
+                    onChange={(e) => setPromoActionType(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:border-[#4D7080] focus:ring-1 focus:ring-[#4D7080]"
+                  >
+                    <option value="booking">Ir al Calendario y Motor de Reservas (#reservas)</option>
+                    <option value="whatsapp">Abrir WhatsApp directo con Rodrigo Sanz</option>
+                    <option value="none">Ninguna acción (Solo informativo)</option>
+                  </select>
+                  <span className="text-[11px] text-slate-400 block mt-1">
+                    ¿Qué sucede cuando el visitante hace clic en el enlace de la promo?
+                  </span>
+                </div>
+
+                {/* Action Button Text */}
+                {promoActionType !== 'none' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Texto del Botón o Enlace
+                    </label>
+                    <input
+                      type="text"
+                      value={promoActionText}
+                      onChange={(e) => setPromoActionText(e.target.value)}
+                      placeholder="Ej: Reservar ahora / Aprovechar"
+                      className="w-full px-3 py-2 text-xs font-semibold border border-slate-300 rounded-xl focus:border-[#4D7080] focus:ring-1 focus:ring-[#4D7080]"
+                    />
+                    <span className="text-[11px] text-slate-400 block mt-1">
+                      Texto que acompaña a la flechita (ej: &quot;Reservar ahora&quot;, &quot;Ver fechas&quot;, etc.)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={onBackToPublicSite}
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
+                >
+                  <span>Ver Página Pública</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={savingPromo}
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingPromo ? 'Guardando en Base de Datos...' : 'Guardar y Publicar en la Web'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
         {/* TAB 4: CONFIGURACIÓN & PRECIOS */}
         {activeTab === 'configuracion' && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 max-w-xl mx-auto space-y-6">
+            {/* Shortcut to Promos Banner */}
+            <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <Megaphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900">Barra Superior de Promos y Beneficios</h4>
+                  <p className="text-[11px] text-slate-600">Personalizá el mensaje, íconos y distintivo superior desde su pestaña dedicada.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('promos')}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shrink-0 transition-colors"
+              >
+                Ir a Promos →
+              </button>
+            </div>
+
             <div>
               <h3 className="text-xl font-bold text-slate-900">
                 Ajustes de Tarifas y Seguridad

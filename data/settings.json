@@ -2,5 +2,15 @@
   "baseNightPrice": 45000,
   "hostPin": "2026",
   "blockedDates": [],
-  "discountPercentage": 12
+  "discountPercentage": 12,
+  "promoBanner": {
+    "enabled": true,
+    "badge": "Promo 3+ Noches",
+    "text": "Al reservar 3 o más noches recibís una bonificación especial en el precio total.",
+    "mobileText": "Bonificación especial a partir de 3 noches.",
+    "theme": "emerald",
+    "icon": "sparkles",
+    "actionText": "Reservar ahora",
+    "actionType": "booking"
+  }
 }

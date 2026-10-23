@@ -48,3 +48,18 @@ export interface BankDetails {
   cuit: string;
   tipoCuenta: string;
 }
+
+export type PromoBannerIcon = 'sparkles' | 'tag' | 'gift' | 'percent' | 'heart' | 'flame' | 'bell';
+export type PromoBannerTheme = 'emerald' | 'amber' | 'blue' | 'rose' | 'purple' | 'slate';
+
+export interface PromoBannerConfig {
+  enabled: boolean;
+  badge: string;
+  text: string;
+  mobileText?: string;
+  theme?: PromoBannerTheme;
+  icon?: PromoBannerIcon;
+  actionText?: string;
+  actionType?: 'booking' | 'whatsapp' | 'none';
+}
+
