@@ -80,11 +80,29 @@ const INITIAL_RESERVATIONS = [
   },
 ];
 
+const DEFAULT_COUPONS = [
+  {
+    id: 'coup-1',
+    code: 'ESCAPADA10',
+    discountPercentage: 10,
+    description: '10% de descuento en tu reserva total',
+    enabled: true,
+  },
+  {
+    id: 'coup-2',
+    code: 'AMIGOS15',
+    discountPercentage: 15,
+    description: '15% de descuento especial por recomendación',
+    enabled: true,
+  },
+];
+
 const DEFAULT_SETTINGS = {
   baseNightPrice: 45000,
   hostPin: '2026', // Rodrigo's default PIN to enter the private admin page
   blockedDates: [], // Strings array of 'YYYY-MM-DD'
   discountPercentage: 12,
+  coupons: DEFAULT_COUPONS,
   promoBanner: {
     enabled: true,
     badge: 'Promo 3+ Noches',
@@ -130,6 +148,7 @@ function readSettings() {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
+      coupons: parsed.coupons || DEFAULT_SETTINGS.coupons,
       promoBanner: {
         ...DEFAULT_SETTINGS.promoBanner,
         ...(parsed.promoBanner || {}),

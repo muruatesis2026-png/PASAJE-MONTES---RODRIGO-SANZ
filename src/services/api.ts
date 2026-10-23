@@ -1,4 +1,4 @@
-import { Reservation, PromoBannerConfig } from '../types';
+import { Reservation, PromoBannerConfig, DiscountCoupon } from '../types';
 import { INITIAL_RESERVATIONS } from '../data/lodgingData';
 
 export const DEFAULT_PROMO_BANNER: PromoBannerConfig = {
@@ -12,12 +12,30 @@ export const DEFAULT_PROMO_BANNER: PromoBannerConfig = {
   actionType: 'booking',
 };
 
+export const DEFAULT_COUPONS: DiscountCoupon[] = [
+  {
+    id: 'coup-1',
+    code: 'ESCAPADA10',
+    discountPercentage: 10,
+    description: '10% de descuento en tu reserva total',
+    enabled: true,
+  },
+  {
+    id: 'coup-2',
+    code: 'AMIGOS15',
+    discountPercentage: 15,
+    description: '15% de descuento especial por recomendación',
+    enabled: true,
+  },
+];
+
 export interface HostSettings {
   baseNightPrice: number;
   hostPin: string;
   blockedDates: string[]; // YYYY-MM-DD
   discountPercentage: number;
   promoBanner: PromoBannerConfig;
+  coupons?: DiscountCoupon[];
 }
 
 export interface AvailabilityData {
@@ -172,6 +190,7 @@ export const api = {
           hostPin: data.hostPin ?? '2026',
           blockedDates: data.blockedDates ?? [],
           discountPercentage: data.discountPercentage ?? 12,
+          coupons: data.coupons || DEFAULT_COUPONS,
           promoBanner: {
             ...DEFAULT_PROMO_BANNER,
             ...(data.promoBanner || {}),
@@ -192,6 +211,7 @@ export const api = {
           hostPin: parsed.hostPin ?? '2026',
           blockedDates: parsed.blockedDates ?? [],
           discountPercentage: parsed.discountPercentage ?? 12,
+          coupons: parsed.coupons || DEFAULT_COUPONS,
           promoBanner: {
             ...DEFAULT_PROMO_BANNER,
             ...(parsed.promoBanner || {}),
@@ -206,6 +226,7 @@ export const api = {
       hostPin: '2026',
       blockedDates: [],
       discountPercentage: 12,
+      coupons: DEFAULT_COUPONS,
       promoBanner: DEFAULT_PROMO_BANNER,
     };
   },

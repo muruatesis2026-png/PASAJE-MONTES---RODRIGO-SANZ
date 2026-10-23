@@ -20,7 +20,7 @@ import { GuestGuideModal } from './components/GuestGuideModal';
 import { HostDashboardPage } from './components/HostDashboardPage';
 import { INITIAL_RESERVATIONS, LODGING_INFO } from './data/lodgingData';
 import { Reservation } from './types';
-import { api, HostSettings, DEFAULT_PROMO_BANNER } from './services/api';
+import { api, HostSettings, DEFAULT_PROMO_BANNER, DEFAULT_COUPONS } from './services/api';
 import { getAllUnavailableDates, checkRangeAvailability, formatDate } from './utils/dateUtils';
 
 export default function App() {
@@ -41,12 +41,13 @@ export default function App() {
     return 'public';
   });
 
-  // Host settings state (includes blockedDates, baseNightPrice, promoBanner, etc.)
+  // Host settings state (includes blockedDates, baseNightPrice, promoBanner, coupons, etc.)
   const [hostSettings, setHostSettings] = useState<HostSettings>({
     baseNightPrice: 45000,
     hostPin: '2026',
     blockedDates: [],
     discountPercentage: 12,
+    coupons: DEFAULT_COUPONS,
     promoBanner: DEFAULT_PROMO_BANNER,
   });
 

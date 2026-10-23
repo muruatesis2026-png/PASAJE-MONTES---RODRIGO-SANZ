@@ -3,6 +3,22 @@
   "hostPin": "2026",
   "blockedDates": [],
   "discountPercentage": 12,
+  "coupons": [
+    {
+      "id": "coup-1",
+      "code": "ESCAPADA10",
+      "discountPercentage": 10,
+      "description": "10% de descuento en tu reserva total",
+      "enabled": true
+    },
+    {
+      "id": "coup-2",
+      "code": "AMIGOS15",
+      "discountPercentage": 15,
+      "description": "15% de descuento especial por recomendación",
+      "enabled": true
+    }
+  ],
   "promoBanner": {
     "enabled": true,
     "badge": "Promo 3+ Noches",

@@ -33,11 +33,22 @@ export interface Reservation {
   subtotal: number;
   discountAmount: number;
   discountPercentage: number;
+  couponCode?: string;
+  couponDiscount?: number;
   totalPrice: number;
   depositAmount: number; // 50%
   balanceDue: number; // 50%
   status: 'pendiente_sena' | 'confirmada' | 'completada' | 'cancelada';
   createdAt: string;
+}
+
+export interface DiscountCoupon {
+  id: string;
+  code: string; // e.g. "ESCAPADA10", "AMIGOS20"
+  discountPercentage: number; // e.g. 10, 15, 20 (%)
+  description?: string;
+  enabled: boolean;
+  createdAt?: string;
 }
 
 export interface BankDetails {

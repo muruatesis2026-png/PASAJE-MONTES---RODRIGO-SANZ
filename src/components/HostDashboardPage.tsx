@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon } from '../types';
+import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon, DiscountCoupon } from '../types';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
-import { api, HostSettings, DEFAULT_PROMO_BANNER } from '../services/api';
+import { api, HostSettings, DEFAULT_PROMO_BANNER, DEFAULT_COUPONS } from '../services/api';
 import { formatDate, formatFriendlyDate, getAllUnavailableDates, getDaysDifference, addDays } from '../utils/dateUtils';
 import { Logo } from './Logo';
 import {
@@ -47,6 +47,8 @@ import {
   ArrowRight,
   Smartphone,
   Monitor,
+  Ticket,
+  X,
 } from 'lucide-react';
 
 interface HostDashboardPageProps {
@@ -173,10 +175,15 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     hostPin: '2026',
     blockedDates: [],
     discountPercentage: 12,
+    coupons: DEFAULT_COUPONS,
     promoBanner: DEFAULT_PROMO_BANNER,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'reservas' | 'nueva' | 'calendario' | 'promos' | 'configuracion'>('calendario');
+
+  // Deletion modal state (fixes iframe window.confirm blocking bug)
+  const [reservationToDelete, setReservationToDelete] = useState<Reservation | null>(null);
+  const [isDeletingReservation, setIsDeletingReservation] = useState(false);
 
   // Promo Banner state
   const [promoEnabled, setPromoEnabled] = useState(true);
@@ -189,6 +196,13 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   const [promoActionType, setPromoActionType] = useState<'booking' | 'whatsapp' | 'none'>('booking');
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [savingPromo, setSavingPromo] = useState(false);
+
+  // Coupons state (managed in "Precios & PIN" tab)
+  const [coupons, setCoupons] = useState<DiscountCoupon[]>(DEFAULT_COUPONS);
+  const [newCouponCode, setNewCouponCode] = useState('');
+  const [newCouponDiscount, setNewCouponDiscount] = useState<number>(15);
+  const [newCouponDesc, setNewCouponDesc] = useState('');
+  const [couponFormError, setCouponFormError] = useState<string | null>(null);
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<'all' | 'pendiente_sena' | 'confirmada' | 'cancelada'>('all');
@@ -228,6 +242,11 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       setEditPrice(setts.baseNightPrice);
       setEditPin(setts.hostPin);
       setEditDiscount(setts.discountPercentage);
+      if (setts.coupons && Array.isArray(setts.coupons)) {
+        setCoupons(setts.coupons);
+      } else {
+        setCoupons(DEFAULT_COUPONS);
+      }
       if (setts.promoBanner) {
         setPromoEnabled(setts.promoBanner.enabled ?? true);
         setPromoBadge(setts.promoBanner.badge || 'Promo 3+ Noches');
@@ -288,18 +307,23 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     }
   };
 
-  const handleDeleteReservation = async (id: string, code: string) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar la reserva ${code}? Esta acción borrará el registro de la base de datos.`)) {
-      return;
-    }
+  const handleConfirmDeleteReservation = async () => {
+    if (!reservationToDelete) return;
+    setIsDeletingReservation(true);
     try {
-      const ok = await api.deleteReservation(id);
+      const ok = await api.deleteReservation(reservationToDelete.id);
       if (ok) {
-        setReservations((prev) => prev.filter((r) => r.id !== id));
-        showTemporaryNotice(`Reserva ${code} eliminada de la base de datos.`);
+        setReservations((prev) => prev.filter((r) => r.id !== reservationToDelete.id));
+        showTemporaryNotice(`✓ Reserva ${reservationToDelete.code} eliminada de la base de datos.`);
+      } else {
+        showTemporaryNotice('No se pudo eliminar la reserva. Verificá la conexión.');
       }
     } catch (err) {
       console.error(err);
+      showTemporaryNotice('Error de conexión al eliminar la reserva.');
+    } finally {
+      setIsDeletingReservation(false);
+      setReservationToDelete(null);
     }
   };
 
@@ -310,11 +334,80 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
         baseNightPrice: Number(editPrice),
         hostPin: editPin.trim() || '2026',
         discountPercentage: Number(editDiscount),
+        coupons,
       });
       setSettings(updated);
-      showTemporaryNotice('Configuración y tarifas guardadas exitosamente en la base de datos.');
+      showTemporaryNotice('Configuración, tarifas y cupones guardados exitosamente en la base de datos.');
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleAddCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCouponFormError(null);
+    const cleanCode = newCouponCode.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (!cleanCode) {
+      setCouponFormError('Por favor ingresá un código para el cupón (ej: DESCUENTO10).');
+      return;
+    }
+    if (coupons.some((c) => c.code === cleanCode)) {
+      setCouponFormError(`El cupón "${cleanCode}" ya existe. Podés activarlo o editar su descuento.`);
+      return;
+    }
+    const discountNum = Number(newCouponDiscount);
+    if (isNaN(discountNum) || discountNum <= 0 || discountNum > 90) {
+      setCouponFormError('El porcentaje de descuento debe ser entre 1% y 90%.');
+      return;
+    }
+
+    const newCoupon: DiscountCoupon = {
+      id: `coup-${Date.now()}`,
+      code: cleanCode,
+      discountPercentage: discountNum,
+      description: newCouponDesc.trim() || `${discountNum}% de descuento en el total`,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedCoupons = [newCoupon, ...coupons];
+    setCoupons(updatedCoupons);
+    setNewCouponCode('');
+    setNewCouponDesc('');
+
+    try {
+      const updated = await api.updateSettings({ coupons: updatedCoupons });
+      setSettings(updated);
+      showTemporaryNotice(`✓ Cupón ${cleanCode} (${discountNum}% OFF) creado y guardado en la base de datos.`);
+    } catch (err) {
+      console.error('Error saving new coupon:', err);
+    }
+  };
+
+  const handleToggleCoupon = async (id: string) => {
+    const updatedCoupons = coupons.map((c) =>
+      c.id === id ? { ...c, enabled: !c.enabled } : c
+    );
+    setCoupons(updatedCoupons);
+    try {
+      const updated = await api.updateSettings({ coupons: updatedCoupons });
+      setSettings(updated);
+      const target = updatedCoupons.find((c) => c.id === id);
+      showTemporaryNotice(`Cupón ${target?.code} ${target?.enabled ? 'activado' : 'pausado'}.`);
+    } catch (err) {
+      console.error('Error toggling coupon:', err);
+    }
+  };
+
+  const handleDeleteCoupon = async (id: string, code: string) => {
+    const updatedCoupons = coupons.filter((c) => c.id !== id);
+    setCoupons(updatedCoupons);
+    try {
+      const updated = await api.updateSettings({ coupons: updatedCoupons });
+      setSettings(updated);
+      showTemporaryNotice(`Cupón ${code} eliminado de la base de datos.`);
+    } catch (err) {
+      console.error('Error deleting coupon:', err);
     }
   };
 
@@ -410,7 +503,6 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
 
   const handleClearAllBlockedDates = async () => {
     if (settings.blockedDates.length === 0) return;
-    if (!window.confirm('¿Deseas desbloquear todas las fechas bloqueadas manualmente?')) return;
     const updated = await api.updateSettings({ blockedDates: [] });
     setSettings(updated);
     showTemporaryNotice('Todas las fechas bloqueadas manualmente fueron liberadas.');
@@ -1208,9 +1300,10 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                         </span>
 
                         <button
-                          onClick={() => handleDeleteReservation(res.id, res.code)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
-                          title="Eliminar registro"
+                          type="button"
+                          onClick={() => setReservationToDelete(res)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title="Eliminar registro de la base de datos"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1236,6 +1329,11 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                           {formatCurrency(res.totalPrice)}{' '}
                           <span className="text-emerald-700">({formatCurrency(res.depositAmount)})</span>
                         </span>
+                        {res.couponCode && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 mt-0.5">
+                            <Ticket className="w-2.5 h-2.5" /> Cupón: {res.couponCode}
+                          </span>
+                        )}
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[10px]">Saldo al Ingreso</span>
@@ -1888,16 +1986,252 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
               <div className="pt-4 flex justify-end">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-[#4D7080] hover:bg-[#375663] text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center gap-2"
+                  className="px-6 py-2.5 bg-[#4D7080] hover:bg-[#375663] text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center gap-2 cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Guardar Cambios</span>
+                  <span>Guardar Tarifas y PIN</span>
                 </button>
               </div>
             </form>
+
+            {/* SECCIÓN DEDICADA: GESTIÓN DE CUPONES DE DESCUENTO */}
+            <div className="pt-6 border-t border-slate-200/80 space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <Ticket className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Cupones de Descuento Promocionales
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Creá cupones con el código y porcentaje (%) que quieras. Los huéspedes podrán ingresarlo en la web para obtener el descuento automático.
+                  </p>
+                </div>
+              </div>
+
+              {/* Add New Coupon Form */}
+              <form onSubmit={handleAddCoupon} className="p-4 rounded-2xl bg-purple-50/50 border border-purple-200/80 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Código del Cupón *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: AMIGOS20"
+                      value={newCouponCode}
+                      onChange={(e) => {
+                        setNewCouponCode(e.target.value.toUpperCase());
+                        setCouponFormError(null);
+                      }}
+                      className="w-full px-3 py-2 text-xs font-mono font-bold uppercase tracking-wider border border-purple-300 rounded-xl bg-white focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Descuento (% Total) *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={1}
+                        max={90}
+                        required
+                        value={newCouponDiscount}
+                        onChange={(e) => {
+                          setNewCouponDiscount(Number(e.target.value));
+                          setCouponFormError(null);
+                        }}
+                        className="w-full px-3 py-2 pr-7 text-xs font-bold border border-purple-300 rounded-xl bg-white focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                      <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">%</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nota / Descripción (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Para familiares y amigos"
+                      value={newCouponDesc}
+                      onChange={(e) => setNewCouponDesc(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-purple-300 rounded-xl bg-white focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {couponFormError && (
+                  <p className="text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>{couponFormError}</span>
+                  </p>
+                )}
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Agregar Cupón</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* List of Coupons */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Cupones Configurados ({coupons.length})
+                </h4>
+
+                {coupons.length === 0 ? (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
+                    No hay cupones creados todavía. Creá uno arriba para comenzar.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {coupons.map((coupon) => (
+                      <div
+                        key={coupon.id}
+                        className={`p-3.5 rounded-2xl border transition-all flex flex-wrap items-center justify-between gap-3 ${
+                          coupon.enabled
+                            ? 'bg-white border-slate-200 shadow-2xs'
+                            : 'bg-slate-50 border-slate-200 opacity-70'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-xl ${
+                            coupon.enabled
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-slate-200 text-slate-500'
+                          }`}>
+                            <Ticket className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-black text-sm text-slate-900 tracking-wider">
+                                {coupon.code}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                {coupon.discountPercentage}% OFF
+                              </span>
+                              {coupon.enabled ? (
+                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                  Activo
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                                  Pausado
+                                </span>
+                              )}
+                            </div>
+                            {coupon.description && (
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                {coupon.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 ml-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCoupon(coupon.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                              coupon.enabled
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            }`}
+                          >
+                            {coupon.enabled ? 'Pausar' : 'Activar'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCoupon(coupon.id, coupon.code)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Eliminar cupón"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </main>
+
+      {/* Delete Reservation Confirmation Modal (Fixes iframe window.confirm blocking bug) */}
+      {reservationToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-bold text-slate-900">
+                ¿Eliminar reserva de la Base de Datos?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Esta acción borrará de forma permanente el registro del sistema de Pasaje Montes.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2 text-slate-700">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Código de Reserva:</span>
+                <span className="font-mono font-bold text-sm text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                  {reservationToDelete.code}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Huésped:</span>
+                <span className="font-bold text-slate-900">{reservationToDelete.guestName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Fechas:</span>
+                <span className="font-semibold text-slate-800">
+                  {reservationToDelete.checkIn} al {reservationToDelete.checkOut} ({reservationToDelete.nights} noches)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Monto Total:</span>
+                <span className="font-black text-emerald-700">{formatCurrency(reservationToDelete.totalPrice)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingReservation}
+                onClick={() => setReservationToDelete(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingReservation}
+                onClick={handleConfirmDeleteReservation}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingReservation ? 'Borrando...' : 'Sí, Eliminar Registro'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
