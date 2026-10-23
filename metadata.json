@@ -1,0 +1,6 @@
+{
+  "name": "Pasaje Montes | Alojamiento en Cruz del Eje",
+  "description": "Departamento de residencia temporaria en Cruz del Eje, Córdoba. Cómodo y funcional para hasta 3 personas con cochera cubierta, cocina completa, WiFi y sistema de reservas online.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
