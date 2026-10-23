@@ -11,6 +11,14 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
+// Prevent any caching of API responses
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 const DATA_DIR = path.resolve(__dirname, 'data');
 const RESERVATIONS_FILE = path.join(DATA_DIR, 'reservations.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
@@ -123,6 +131,38 @@ function writeSettings(data: any) {
   }
 }
 
+function calculateOccupiedDatesFromReservations(reservations: any[]): string[] {
+  const dates = new Set<string>();
+  for (const res of reservations) {
+    if (!res || res.status === 'cancelada') continue;
+    if (!res.checkIn || !res.checkOut) continue;
+    const parts1 = String(res.checkIn).trim().split('-');
+    const parts2 = String(res.checkOut).trim().split('-');
+    if (parts1.length !== 3 || parts2.length !== 3) continue;
+
+    const y1 = parseInt(parts1[0], 10);
+    const m1 = parseInt(parts1[1], 10);
+    const d1 = parseInt(parts1[2], 10);
+
+    const y2 = parseInt(parts2[0], 10);
+    const m2 = parseInt(parts2[1], 10);
+    const d2 = parseInt(parts2[2], 10);
+
+    const utc1 = Date.UTC(y1, m1 - 1, d1);
+    const utc2 = Date.UTC(y2, m2 - 1, d2);
+    const nights = Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+
+    for (let i = 0; i < nights; i++) {
+      const cur = new Date(Date.UTC(y1, m1 - 1, d1 + i));
+      const y = cur.getUTCFullYear();
+      const m = String(cur.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(cur.getUTCDate()).padStart(2, '0');
+      dates.add(`${y}-${m}-${d}`);
+    }
+  }
+  return Array.from(dates).sort();
+}
+
 // API Routes
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -131,6 +171,20 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/reservations', (_req, res) => {
   const data = readReservations();
   res.json(data);
+});
+
+app.get('/api/availability', (_req, res) => {
+  const reservations = readReservations();
+  const settings = readSettings();
+  const occupiedFromReservations = calculateOccupiedDatesFromReservations(reservations);
+  const manuallyBlocked = settings.blockedDates || [];
+  const allUnavailable = Array.from(new Set([...manuallyBlocked, ...occupiedFromReservations])).sort();
+  res.json({
+    blockedDates: manuallyBlocked,
+    occupiedDates: occupiedFromReservations,
+    allUnavailableDates: allUnavailable,
+    lastUpdated: new Date().toISOString(),
+  });
 });
 
 app.post('/api/reservations', (req, res) => {

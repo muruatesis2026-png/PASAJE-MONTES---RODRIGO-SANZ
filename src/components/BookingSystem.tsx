@@ -7,6 +7,7 @@ import {
   getAllUnavailableDates,
   checkRangeAvailability,
   formatFriendlyDate,
+  getDaysDifference,
 } from '../utils/dateUtils';
 import {
   Calendar as CalendarIcon,
@@ -63,6 +64,7 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   const [confirmedReservation, setConfirmedReservation] = useState<Reservation | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [stepSuccessNotice, setStepSuccessNotice] = useState<string | null>(null);
 
   // Calculate unavailable dates (excluding currently confirmed reservation so it doesn't conflict with itself)
   const otherReservations = existingReservations.filter(
@@ -78,14 +80,11 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   const rangeCheck = checkRangeAvailability(checkInDate, checkOutDate, unavailableDates);
   const isRangeAvailable = rangeCheck.available;
 
-  // Calculate nights
+  // Calculate nights safely using timezone-safe UTC difference
   const calculateNights = (): number => {
     if (!checkInDate || !checkOutDate) return 0;
-    const start = new Date(checkInDate + 'T00:00:00');
-    const end = new Date(checkOutDate + 'T00:00:00');
-    const diffTime = end.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays > 0 ? diffDays : 0;
+    const diff = getDaysDifference(checkInDate, checkOutDate);
+    return diff > 0 ? diff : 0;
   };
 
   const nights = calculateNights();
@@ -102,35 +101,41 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   const depositAmount = Math.round(totalPrice * (LODGING_INFO.depositPercentage / 100));
   const balanceDue = totalPrice - depositAmount;
 
-  // Validation
-  const validateStep1 = () => {
+  // Step 1 validation with explicit user alerts
+  const handleGoToStep2 = () => {
     if (!checkInDate) {
-      setFormError('Por favor seleccioná la fecha de ingreso (check-in).');
-      return false;
+      setFormError('Por favor seleccioná la fecha de ingreso (check-in) en el calendario.');
+      setStepSuccessNotice(null);
+      return;
     }
     if (!checkOutDate) {
-      setFormError('Por favor seleccioná la fecha de salida (check-out).');
-      return false;
+      setFormError('Por favor seleccioná la fecha de salida (check-out) en el calendario.');
+      setStepSuccessNotice(null);
+      return;
     }
     if (nights <= 0) {
       setFormError('La fecha de salida debe ser posterior a la fecha de ingreso.');
-      return false;
+      setStepSuccessNotice(null);
+      return;
     }
     if (!isRangeAvailable) {
       const conflictMsg = rangeCheck.conflictDate
-        ? `El día ${formatFriendlyDate(rangeCheck.conflictDate)} ya se encuentra ocupado o bloqueado.`
-        : 'Las fechas seleccionadas no se encuentran disponibles.';
-      setFormError(`Fechas no disponibles: ${conflictMsg} Por favor elegí fechas disponibles marcadas en el calendario.`);
-      return false;
+        ? `El día ${formatFriendlyDate(rangeCheck.conflictDate)} ya se encuentra ocupado o reservado.`
+        : 'Las fechas seleccionadas ya no se encuentran disponibles.';
+      setFormError(`Elige una fecha que no esté ocupada: ${conflictMsg} Por favor seleccioná días disponibles marcados en verde en el calendario.`);
+      setStepSuccessNotice(null);
+      return;
     }
-    setFormError(null);
-    return true;
-  };
 
-  const handleGoToStep2 = () => {
-    if (validateStep1()) {
-      setStep(2);
-      setFormError(null);
+    setFormError(null);
+    setStepSuccessNotice(
+      `¡Fechas disponibles! El período del ${formatFriendlyDate(checkInDate)} al ${formatFriendlyDate(checkOutDate)} (${nights} noche${nights > 1 ? 's' : ''}) está libre. Avanzando al siguiente paso...`
+    );
+    setStep(2);
+
+    const bookingEl = document.getElementById('reservas');
+    if (bookingEl) {
+      bookingEl.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -138,11 +143,16 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
     e.preventDefault();
     if (!guestName.trim() || !guestEmail.trim() || !guestPhone.trim()) {
       setFormError('Por favor completá nombre, teléfono / WhatsApp y correo electrónico.');
+      setStepSuccessNotice(null);
       return;
     }
 
     if (!isRangeAvailable) {
-      setFormError('No es posible confirmar la reserva porque una o más fechas ya fueron bloqueadas.');
+      const conflictMsg = rangeCheck.conflictDate
+        ? `El día ${formatFriendlyDate(rangeCheck.conflictDate)} ya se encuentra ocupado.`
+        : 'Una o más fechas ya fueron reservadas.';
+      setFormError(`Elige una fecha que no esté ocupada: ${conflictMsg}`);
+      setStepSuccessNotice(null);
       return;
     }
 
@@ -173,10 +183,18 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
     };
 
     const savedReservation = await api.createReservation(newReservation);
-    onReservationCreated(savedReservation);
     setConfirmedReservation(savedReservation);
+    onReservationCreated(savedReservation);
     setFormError(null);
+    setStepSuccessNotice(
+      `¡Paso realizado correctamente! Tu reserva con código ${savedReservation.code} ha sido registrada con éxito en la base de datos.`
+    );
     setStep(3);
+
+    const bookingEl = document.getElementById('reservas');
+    if (bookingEl) {
+      bookingEl.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const copyToClipboard = (text: string, field: string) => {
@@ -281,12 +299,23 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
           </div>
         </div>
 
+        {/* Step Success Alert (shows when dates are available or step completes) */}
+        {stepSuccessNotice && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-sm flex items-start gap-3 shadow-xs animate-in fade-in">
+            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600 mt-0.5" />
+            <div>
+              <p className="font-bold text-emerald-900">¡Paso realizado correctamente!</p>
+              <p className="text-xs text-emerald-800 mt-0.5">{stepSuccessNotice}</p>
+            </div>
+          </div>
+        )}
+
         {/* Error / Conflict Alert */}
         {formError && step !== 3 && (
           <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-300 text-red-800 text-sm flex items-start gap-3 animate-in fade-in">
             <AlertCircle className="w-5 h-5 shrink-0 text-red-600 mt-0.5" />
             <div>
-              <p className="font-bold text-red-900">Atención con las fechas seleccionadas</p>
+              <p className="font-bold text-red-900">Atención con la reserva</p>
               <p className="text-xs text-red-700 mt-0.5">{formError}</p>
             </div>
           </div>
@@ -297,9 +326,9 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
           <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-sm flex items-start gap-3 shadow-xs">
             <Ban className="w-5 h-5 shrink-0 text-amber-700 mt-0.5" />
             <div>
-              <p className="font-bold">⚠️ Fechas no disponibles para hospedaje</p>
+              <p className="font-bold text-amber-900">⚠️ Fechas no disponibles para hospedaje</p>
               <p className="text-xs text-amber-800 mt-0.5">
-                El día <strong>{rangeCheck.conflictDate ? formatFriendlyDate(rangeCheck.conflictDate) : ''}</strong> ya se encuentra bloqueado o reservado por otro huésped. Por favor elegí días libres en verde en el calendario.
+                Elige una fecha que no esté ocupada: El día <strong>{rangeCheck.conflictDate ? formatFriendlyDate(rangeCheck.conflictDate) : ''}</strong> ya se encuentra bloqueado o reservado por otro huésped. Por favor elegí días libres en verde en el calendario.
               </p>
             </div>
           </div>
@@ -333,7 +362,14 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                     setFormError(null);
                   }}
                   unavailableDates={unavailableDates}
-                  onSelectionError={(msg) => setFormError(msg)}
+                  onSelectionError={(msg) => {
+                    setFormError(msg);
+                    setStepSuccessNotice(null);
+                  }}
+                  onSelectionSuccess={(msg) => {
+                    setStepSuccessNotice(msg);
+                    setFormError(null);
+                  }}
                 />
 
                 {/* Traditional Inputs for accessibility */}
@@ -492,15 +528,21 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                   <button
                     type="button"
                     onClick={handleGoToStep2}
-                    disabled={nights <= 0 || !isRangeAvailable}
-                    className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm shadow transition-all flex items-center justify-center gap-2 ${
+                    className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm shadow transition-all flex items-center justify-center gap-2 cursor-pointer ${
                       nights > 0 && isRangeAvailable
-                        ? 'bg-[#4D7080] hover:bg-[#375663] text-white hover:shadow-md cursor-pointer'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        ? 'bg-[#4D7080] hover:bg-[#375663] text-white hover:shadow-md'
+                        : nights > 0 && !isRangeAvailable
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-md'
+                        : 'bg-[#4D7080]/80 hover:bg-[#4D7080] text-white'
                     }`}
                   >
-                    {!isRangeAvailable ? (
-                      <span>Fechas No Disponibles (Ocupado)</span>
+                    {nights <= 0 ? (
+                      <span>Elegir fechas en el calendario para cotizar</span>
+                    ) : !isRangeAvailable ? (
+                      <>
+                        <Ban className="w-4 h-4" />
+                        <span>Fechas Ocupadas (Clic para ver aviso)</span>
+                      </>
                     ) : (
                       <>
                         <span>Continuar con mis datos</span>
@@ -509,10 +551,12 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                     )}
                   </button>
 
-                  <p className="text-[11px] text-center text-slate-400 mt-2">
+                  <p className="text-[11px] text-center text-slate-500 mt-2 font-medium">
                     {!isRangeAvailable
-                      ? 'Elegí otras fechas disponibles para poder continuar.'
-                      : 'Paso siguiente: datos del huésped para generar la solicitud.'}
+                      ? '⚠️ Una o más fechas seleccionadas están ocupadas. Elegí fechas libres en verde para avanzar.'
+                      : nights <= 0
+                      ? 'Hacé clic en el día de llegada y luego en el día de salida en el calendario.'
+                      : '✓ Fechas disponibles. Hacé clic para completar tus datos y generar la reserva.'}
                   </p>
                 </div>
               </div>
@@ -529,17 +573,24 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
             <div className="space-y-6">
               <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                 <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold mb-1 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Paso 1 completado: Fechas disponibles</span>
+                  </div>
                   <h3 className="text-xl font-bold text-slate-900">
                     Paso 2: Datos del Titular de la Reserva
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Estadía del {checkInDate} al {checkOutDate} ({nights} noches, {guestsCount} persona{guestsCount > 1 ? 's' : ''})
+                    Estadía del {checkInDate} al {checkOutDate} ({nights} noche{nights > 1 ? 's' : ''}, {guestsCount} persona{guestsCount > 1 ? 's' : ''})
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
-                  className="text-xs font-semibold text-[#4D7080] hover:underline"
+                  onClick={() => {
+                    setStep(1);
+                    setFormError(null);
+                  }}
+                  className="text-xs font-semibold text-[#4D7080] hover:underline cursor-pointer"
                 >
                   ← Cambiar fechas
                 </button>

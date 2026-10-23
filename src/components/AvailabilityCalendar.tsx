@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
-import { formatDate } from '../utils/dateUtils';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
+import {
+  buildDateStr,
+  getTodayDateStr,
+  parseDateParts,
+  addDays,
+  getDaysDifference,
+  formatFriendlyDate,
+} from '../utils/dateUtils';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Ban } from 'lucide-react';
 
 interface AvailabilityCalendarProps {
   checkInDate: string;
@@ -9,6 +16,7 @@ interface AvailabilityCalendarProps {
   setCheckOutDate: (date: string) => void;
   unavailableDates: Set<string>;
   onSelectionError?: (msg: string) => void;
+  onSelectionSuccess?: (msg: string) => void;
 }
 
 export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
@@ -18,102 +26,119 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   setCheckOutDate,
   unavailableDates,
   onSelectionError,
+  onSelectionSuccess,
 }) => {
-  // Calendar current display month
-  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => {
+  // Calendar current display month: year & month (1-12)
+  const todayParts = parseDateParts(getTodayDateStr()) || { year: 2026, month: 10, day: 23 };
+
+  const [currentYear, setCurrentYear] = useState<number>(() => {
     if (checkInDate) {
-      const parts = checkInDate.split('-');
-      return new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+      const p = parseDateParts(checkInDate);
+      if (p) return p.year;
     }
-    return new Date();
+    return todayParts.year;
   });
 
-  const todayStr = formatDate(new Date());
+  const [currentMonth, setCurrentMonth] = useState<number>(() => {
+    if (checkInDate) {
+      const p = parseDateParts(checkInDate);
+      if (p) return p.month;
+    }
+    return todayParts.month;
+  });
 
-  const year = currentMonthDate.getFullYear();
-  const month = currentMonthDate.getMonth();
+  const todayStr = getTodayDateStr();
 
   const monthNames = [
-    'Enero',
-    'Febrero',
-    'Marzo',
-    'Abril',
-    'Mayo',
-    'Junio',
-    'Julio',
-    'Agosto',
-    'Septiembre',
-    'Octubre',
-    'Noviembre',
-    'Diciembre',
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
   ];
 
   const daysOfWeek = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 
   const handlePrevMonth = () => {
-    setCurrentMonthDate(new Date(year, month - 1, 1));
+    if (currentMonth === 1) {
+      setCurrentMonth(12);
+      setCurrentYear((y) => y - 1);
+    } else {
+      setCurrentMonth((m) => m - 1);
+    }
   };
 
   const handleNextMonth = () => {
-    setCurrentMonthDate(new Date(year, month + 1, 1));
+    if (currentMonth === 12) {
+      setCurrentMonth(1);
+      setCurrentYear((y) => y + 1);
+    } else {
+      setCurrentMonth((m) => m + 1);
+    }
   };
 
-  // Generate calendar days for current month
-  const firstDayOfMonth = new Date(year, month, 1);
-  // Sunday is 0, so adjust for Monday start (0: Monday, ..., 6: Sunday)
-  let startDayOfWeek = firstDayOfMonth.getDay() - 1;
+  // Start day of week (Monday = 0, Sunday = 6) using UTC
+  const firstDayUtc = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
+  let startDayOfWeek = firstDayUtc.getUTCDay() - 1;
   if (startDayOfWeek === -1) startDayOfWeek = 6;
 
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // Days in month
+  const daysInMonth = new Date(Date.UTC(currentYear, currentMonth, 0)).getUTCDate();
 
   // Handle clicking a day
   const handleDayClick = (dayStr: string) => {
-    // If it's in the past or unavailable, reject
-    if (dayStr < todayStr) return;
-    if (unavailableDates.has(dayStr)) {
+    // 1. Past dates
+    if (dayStr < todayStr) {
       if (onSelectionError) {
-        onSelectionError(`El día ${dayStr} ya se encuentra ocupado o bloqueado. Por favor elegí una fecha libre.`);
+        onSelectionError('No es posible seleccionar una fecha anterior al día de hoy.');
       }
       return;
     }
 
-    // If no check-in is selected, or if both are selected, set new check-in
+    // 2. Clicked date is blocked or occupied
+    if (unavailableDates.has(dayStr)) {
+      if (onSelectionError) {
+        onSelectionError(`Elige una fecha que no esté ocupada: El día ${formatFriendlyDate(dayStr)} ya se encuentra reservado.`);
+      }
+      return;
+    }
+
+    // 3. Selection logic
+    // If no check-in is selected, or if both were already selected, start a fresh selection
     if (!checkInDate || (checkInDate && checkOutDate)) {
       setCheckInDate(dayStr);
       setCheckOutDate('');
+      if (onSelectionSuccess) {
+        onSelectionSuccess(`Ingreso seleccionado: ${formatFriendlyDate(dayStr)}. Ahora seleccioná la fecha de salida (Check-out).`);
+      }
       return;
     }
 
-    // If checkInDate is set but no checkOutDate
+    // If checkInDate is selected and we are picking checkOutDate
     if (checkInDate && !checkOutDate) {
       if (dayStr <= checkInDate) {
-        // If clicked earlier or same day, reset check-in to this day
+        // Clicked same or earlier day: reset check-in to this date
         setCheckInDate(dayStr);
         setCheckOutDate('');
+        if (onSelectionSuccess) {
+          onSelectionSuccess(`Nuevo ingreso seleccionado: ${formatFriendlyDate(dayStr)}. Elegí la fecha de salida.`);
+        }
         return;
       }
 
-      // Check if any date between checkIn and this day is blocked!
-      const start = new Date(checkInDate + 'T00:00:00');
-      const end = new Date(dayStr + 'T00:00:00');
-      let cur = new Date(start);
-      let hasConflict = false;
-      let conflictDateStr = '';
+      // Check if any date in between is occupied
+      const nights = getDaysDifference(checkInDate, dayStr);
+      let conflictDate = '';
 
-      while (cur < end) {
-        const curStr = formatDate(cur);
-        if (unavailableDates.has(curStr)) {
-          hasConflict = true;
-          conflictDateStr = curStr;
+      for (let i = 0; i < nights; i++) {
+        const intermediate = addDays(checkInDate, i);
+        if (unavailableDates.has(intermediate)) {
+          conflictDate = intermediate;
           break;
         }
-        cur.setDate(cur.getDate() + 1);
       }
 
-      if (hasConflict) {
+      if (conflictDate) {
         if (onSelectionError) {
           onSelectionError(
-            `No podés reservar este rango porque el día ${conflictDateStr} está bloqueado/ocupado.`
+            `Elige una fecha que no esté ocupada: El día ${formatFriendlyDate(conflictDate)} dentro del rango ya se encuentra reservado.`
           );
         }
         return;
@@ -121,6 +146,11 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
       // Valid range!
       setCheckOutDate(dayStr);
+      if (onSelectionSuccess) {
+        onSelectionSuccess(
+          `¡Fechas 100% disponibles! Del ${formatFriendlyDate(checkInDate)} al ${formatFriendlyDate(dayStr)} (${nights} noches).`
+        );
+      }
     }
   };
 
@@ -131,7 +161,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
         <div className="flex items-center gap-2">
           <CalendarIcon className="w-4 h-4 text-[#4D7080]" />
           <h4 className="text-sm font-bold text-slate-800 capitalize">
-            {monthNames[month]} {year}
+            {monthNames[currentMonth - 1]} {currentYear}
           </h4>
         </div>
 
@@ -168,61 +198,60 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       <div className="grid grid-cols-7 gap-1 text-center">
         {/* Empty cells before month start */}
         {Array.from({ length: startDayOfWeek }).map((_, i) => (
-          <div key={`empty-${i}`} className="h-9 sm:h-10" />
+          <div key={`empty-${i}`} className="h-10 sm:h-11" />
         ))}
 
         {/* Days of the month */}
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const dayNum = i + 1;
-          const dayDate = new Date(year, month, dayNum);
-          const dayStr = formatDate(dayDate);
+          const dayStr = buildDateStr(currentYear, currentMonth, dayNum);
 
           const isPast = dayStr < todayStr;
           const isBlocked = unavailableDates.has(dayStr);
           const isCheckIn = dayStr === checkInDate;
           const isCheckOut = dayStr === checkOutDate;
           const isInRange =
-            checkInDate &&
-            checkOutDate &&
+            Boolean(checkInDate) &&
+            Boolean(checkOutDate) &&
             dayStr > checkInDate &&
             dayStr < checkOutDate;
 
-          let dayClasses = 'relative h-9 sm:h-10 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all ';
+          let dayClasses = 'relative h-10 sm:h-11 rounded-xl text-xs font-semibold flex flex-col items-center justify-center transition-all cursor-pointer ';
 
           if (isPast) {
             dayClasses += 'text-slate-300 bg-slate-50 cursor-not-allowed';
           } else if (isBlocked) {
-            dayClasses += 'bg-red-50 text-red-500 font-bold border border-red-200 line-through cursor-not-allowed shadow-2xs hover:bg-red-100';
+            dayClasses += 'bg-red-50 text-red-600 font-bold border border-red-200 line-through shadow-2xs hover:bg-red-100 active:scale-95';
           } else if (isCheckIn) {
-            dayClasses += 'bg-[#4D7080] text-white font-bold shadow-md ring-2 ring-[#4D7080]/30 z-10 cursor-pointer';
+            dayClasses += 'bg-[#4D7080] text-white font-bold shadow-md ring-2 ring-[#4D7080]/30 z-10';
           } else if (isCheckOut) {
-            dayClasses += 'bg-[#4D7080] text-white font-bold shadow-md ring-2 ring-[#4D7080]/30 z-10 cursor-pointer';
+            dayClasses += 'bg-[#4D7080] text-white font-bold shadow-md ring-2 ring-[#4D7080]/30 z-10';
           } else if (isInRange) {
-            dayClasses += 'bg-[#4D7080]/15 text-[#24424D] font-bold cursor-pointer';
+            dayClasses += 'bg-[#4D7080]/15 text-[#24424D] font-bold';
           } else {
-            dayClasses += 'bg-white text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-100 hover:border-emerald-300 cursor-pointer';
+            dayClasses += 'bg-white text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-100 hover:border-emerald-300 active:scale-95';
           }
 
           return (
             <button
               key={dayStr}
               type="button"
-              disabled={isPast || isBlocked}
+              disabled={isPast}
               onClick={() => handleDayClick(dayStr)}
               className={dayClasses}
               title={
                 isBlocked
-                  ? `Fecha ${dayStr} Bloqueada / Ocupada`
+                  ? `Fecha ocupada / reservada (${formatFriendlyDate(dayStr)}). Clic para ver aviso.`
                   : isCheckIn
-                  ? 'Check-in (Ingreso)'
+                  ? `Check-in: ${formatFriendlyDate(dayStr)}`
                   : isCheckOut
-                  ? 'Check-out (Salida)'
-                  : `Disponible (${dayStr})`
+                  ? `Check-out: ${formatFriendlyDate(dayStr)}`
+                  : `Disponible (${formatFriendlyDate(dayStr)})`
               }
             >
-              <span>{dayNum}</span>
+              <span className="leading-none">{dayNum}</span>
               {isBlocked && (
-                <span className="text-[8px] font-normal leading-none block -mt-0.5 text-red-600">
+                <span className="text-[8px] font-bold leading-none block mt-0.5 text-red-600">
                   Ocupado
                 </span>
               )}
@@ -249,7 +278,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-md bg-red-100 border border-red-300 shrink-0"></span>
-          <span className="text-red-600 font-medium">Bloqueado / Ocupado</span>
+          <span className="text-red-600 font-bold">Ocupado / Bloqueado</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-md bg-[#4D7080] shrink-0"></span>

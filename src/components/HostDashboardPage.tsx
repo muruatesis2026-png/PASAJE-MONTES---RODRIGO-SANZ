@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Reservation } from '../types';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
 import { api, HostSettings } from '../services/api';
-import { formatDate, formatFriendlyDate, getAllUnavailableDates } from '../utils/dateUtils';
+import { formatDate, formatFriendlyDate, getAllUnavailableDates, getDaysDifference, addDays } from '../utils/dateUtils';
 import { Logo } from './Logo';
 import {
   Lock,
@@ -205,20 +205,15 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       return;
     }
 
-    const start = new Date(blockRangeStart + 'T00:00:00');
-    const end = new Date(blockRangeEnd + 'T00:00:00');
-
-    if (start > end) {
+    const diff = getDaysDifference(blockRangeStart, blockRangeEnd);
+    if (diff < 0) {
       alert('La fecha Desde debe ser anterior o igual a la fecha Hasta.');
       return;
     }
 
     const newBlockedSet = new Set(settings.blockedDates);
-    const cur = new Date(start);
-
-    while (cur <= end) {
-      newBlockedSet.add(formatDate(cur));
-      cur.setDate(cur.getDate() + 1);
+    for (let i = 0; i <= diff; i++) {
+      newBlockedSet.add(addDays(blockRangeStart, i));
     }
 
     const updatedDates = Array.from(newBlockedSet).sort();

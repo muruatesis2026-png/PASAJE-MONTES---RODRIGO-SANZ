@@ -67,6 +67,35 @@ export default function App() {
 
   useEffect(() => {
     refreshAppData();
+
+    // 1. Listen to custom database updates triggered on reservation/block changes
+    const handleDbUpdate = () => {
+      refreshAppData();
+    };
+    window.addEventListener('pasaje_montes_db_update', handleDbUpdate);
+
+    // 2. Listen to cross-tab storage changes
+    window.addEventListener('storage', handleDbUpdate);
+
+    // 3. Listen to window focus & tab visibility changes
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        refreshAppData();
+      }
+    };
+    window.addEventListener('focus', handleDbUpdate);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // 4. Active live-sync polling (every 3 seconds) ensures instant updates across host & guests
+    const interval = setInterval(refreshAppData, 3000);
+
+    return () => {
+      window.removeEventListener('pasaje_montes_db_update', handleDbUpdate);
+      window.removeEventListener('storage', handleDbUpdate);
+      window.removeEventListener('focus', handleDbUpdate);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(interval);
+    };
   }, [currentPage]);
 
   // Compute all unavailable dates (manually blocked + active reservations)
