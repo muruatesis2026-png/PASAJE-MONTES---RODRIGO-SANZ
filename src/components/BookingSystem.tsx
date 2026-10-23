@@ -26,6 +26,7 @@ import {
   Ban,
   CheckCircle2,
   BookOpen,
+  RotateCcw,
 } from 'lucide-react';
 import { GuestGuideModal } from './GuestGuideModal';
 
@@ -140,6 +141,18 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
     if (bookingEl) {
       bookingEl.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleClearDates = () => {
+    setCheckInDate('');
+    setCheckOutDate('');
+    setFormError(null);
+    setStepSuccessNotice('Fechas deseleccionadas. Podés elegir un nuevo rango en el calendario.');
+    setTimeout(() => {
+      setStepSuccessNotice((curr) =>
+        curr?.includes('Fechas deseleccionadas') ? null : curr
+      );
+    }, 3000);
   };
 
   const handleConfirmReservation = async (e: React.FormEvent) => {
@@ -343,13 +356,26 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               {/* Left Column: Visual Calendar & Date Inputs */}
               <div className="lg:col-span-7 space-y-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                     <span>Paso 1: Calendario & Fechas</span>
                   </h3>
-                  <span className="text-xs text-slate-500 font-medium">
-                    Tocá las fechas libres para elegirlas
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {(checkInDate || checkOutDate) && (
+                      <button
+                        type="button"
+                        onClick={handleClearDates}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-300 text-xs font-bold transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                        title="Deseleccionar fechas y elegir un nuevo rango"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Borrar selección</span>
+                      </button>
+                    )}
+                    <span className="hidden sm:inline text-xs text-slate-500 font-medium">
+                      Tocá las fechas libres para elegirlas
+                    </span>
+                  </div>
                 </div>
 
                 {/* Interactive Visual Calendar */}
@@ -365,6 +391,7 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                     setFormError(null);
                   }}
                   unavailableDates={unavailableDates}
+                  onClearSelection={handleClearDates}
                   onSelectionError={(msg) => {
                     setFormError(msg);
                     setStepSuccessNotice(null);
@@ -465,15 +492,28 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                       <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                         Detalle de Cotización
                       </span>
-                      {isRangeAvailable && nights > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3" /> Fechas Disponibles
-                        </span>
-                      ) : checkInDate && checkOutDate && !isRangeAvailable ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                          <Ban className="w-3 h-3" /> Fechas Ocupadas
-                        </span>
-                      ) : null}
+                      <div className="flex items-center gap-1.5">
+                        {isRangeAvailable && nights > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            <CheckCircle2 className="w-3 h-3" /> Fechas Disponibles
+                          </span>
+                        ) : checkInDate && checkOutDate && !isRangeAvailable ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                            <Ban className="w-3 h-3" /> Fechas Ocupadas
+                          </span>
+                        ) : null}
+                        {(checkInDate || checkOutDate) && (
+                          <button
+                            type="button"
+                            onClick={handleClearDates}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
+                            title="Borrar fechas seleccionadas"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Borrar</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <h4 className="text-lg font-bold text-slate-900 mt-1">

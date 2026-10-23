@@ -7,7 +7,7 @@ import {
   getDaysDifference,
   formatFriendlyDate,
 } from '../utils/dateUtils';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Ban } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Ban, RotateCcw } from 'lucide-react';
 
 interface AvailabilityCalendarProps {
   checkInDate: string;
@@ -17,6 +17,7 @@ interface AvailabilityCalendarProps {
   unavailableDates: Set<string>;
   onSelectionError?: (msg: string) => void;
   onSelectionSuccess?: (msg: string) => void;
+  onClearSelection?: () => void;
 }
 
 export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
@@ -27,6 +28,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   unavailableDates,
   onSelectionError,
   onSelectionSuccess,
+  onClearSelection,
 }) => {
   // Calendar current display month: year & month (1-12)
   const todayParts = parseDateParts(getTodayDateStr()) || { year: 2026, month: 10, day: 23 };
@@ -154,10 +156,18 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
     }
   };
 
+  const handleClear = () => {
+    setCheckInDate('');
+    setCheckOutDate('');
+    if (onClearSelection) {
+      onClearSelection();
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs">
       {/* Calendar Header */}
-      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+      <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
         <div className="flex items-center gap-2">
           <CalendarIcon className="w-4 h-4 text-[#4D7080]" />
           <h4 className="text-sm font-bold text-slate-800 capitalize">
@@ -165,7 +175,18 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
           </h4>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          {(checkInDate || checkOutDate) && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="inline-flex sm:hidden items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-colors cursor-pointer mr-1"
+              title="Borrar selección de fechas"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Borrar</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handlePrevMonth}
@@ -184,6 +205,42 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Active Selection Banner with prominent Borrar selección button */}
+      {(checkInDate || checkOutDate) && (
+        <div className="mb-3.5 p-2.5 px-3 bg-[#FBF8F3] border border-amber-200/90 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2 text-slate-800 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-[#4D7080] shrink-0 animate-pulse"></span>
+            <span className="truncate">
+              {checkInDate && checkOutDate ? (
+                <>
+                  <span className="font-semibold text-slate-900">Ingreso:</span> {formatFriendlyDate(checkInDate)} ·{' '}
+                  <span className="font-semibold text-slate-900">Salida:</span> {formatFriendlyDate(checkOutDate)}
+                </>
+              ) : checkInDate ? (
+                <>
+                  <span className="font-semibold text-slate-900">Ingreso elegido:</span> {formatFriendlyDate(checkInDate)}{' '}
+                  <span className="text-slate-500">(hacé clic en tu día de salida)</span>
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-slate-900">Salida elegida:</span> {formatFriendlyDate(checkOutDate)}
+                </>
+              )}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleClear}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-300 text-xs font-bold transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer shrink-0 ml-auto"
+            title="Borrar fechas seleccionadas y volver a elegir"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+            <span>Borrar selección</span>
+          </button>
+        </div>
+      )}
 
       {/* Weekdays */}
       <div className="grid grid-cols-7 gap-1 text-center mb-1.5">
