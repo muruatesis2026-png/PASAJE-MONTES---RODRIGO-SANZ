@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
-import { Reservation } from '../types';
+import { Reservation, DiscountCoupon } from '../types';
 import { api, HostSettings } from '../services/api';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 import {
@@ -27,6 +27,9 @@ import {
   CheckCircle2,
   BookOpen,
   RotateCcw,
+  Ticket,
+  Tag,
+  X,
 } from 'lucide-react';
 import { GuestGuideModal } from './GuestGuideModal';
 
@@ -61,6 +64,12 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   const [guestOrigin, setGuestOrigin] = useState('');
   const [estimatedArrival, setEstimatedArrival] = useState('16:00 hs');
   const [specialRequests, setSpecialRequests] = useState('');
+
+  // Coupon state
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<DiscountCoupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponSuccess, setCouponSuccess] = useState<string | null>(null);
 
   // UI state
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Fechas & Precios, 2: Datos, 3: Confirmación
@@ -100,10 +109,50 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   const discountRate = hostSettings?.discountPercentage ?? LODGING_INFO.discountPercentage;
   const hasDiscount = nights >= discountThreshold;
   const discountPercentage = hasDiscount ? discountRate : 0;
-  const discountAmount = hasDiscount ? Math.round((subtotal * discountPercentage) / 100) : 0;
-  const totalPrice = subtotal - discountAmount;
+  const stayDiscountAmount = hasDiscount ? Math.round((subtotal * discountPercentage) / 100) : 0;
+  const priceAfterStayDiscount = subtotal - stayDiscountAmount;
+
+  // Coupon discount calculation
+  const couponDiscountAmount = appliedCoupon
+    ? Math.round((priceAfterStayDiscount * appliedCoupon.discountPercentage) / 100)
+    : 0;
+
+  const totalDiscountAmount = stayDiscountAmount + couponDiscountAmount;
+  const discountAmount = totalDiscountAmount;
+  const totalPrice = Math.max(0, subtotal - totalDiscountAmount);
   const depositAmount = Math.round(totalPrice * (LODGING_INFO.depositPercentage / 100));
   const balanceDue = totalPrice - depositAmount;
+
+  // Coupon handlers
+  const handleApplyCoupon = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setCouponError(null);
+    setCouponSuccess(null);
+    const code = couponInput.trim().toUpperCase();
+    if (!code) {
+      setCouponError('Por favor ingresá el código de tu cupón.');
+      return;
+    }
+    const availableCoupons = hostSettings?.coupons || [];
+    const matched = availableCoupons.find(
+      (c) => c.code.trim().toUpperCase() === code && c.enabled !== false
+    );
+
+    if (matched) {
+      setAppliedCoupon(matched);
+      setCouponSuccess(`¡Cupón "${matched.code}" aplicado! Tenés un ${matched.discountPercentage}% de descuento.`);
+      setCouponError(null);
+    } else {
+      setCouponError(`El cupón "${code}" no es válido o ya no se encuentra activo.`);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError(null);
+    setCouponSuccess(null);
+  };
 
   // Step 1 validation with explicit user alerts
   const handleGoToStep2 = () => {
@@ -173,6 +222,11 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
     }
 
     const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    const specialReqsWithCoupon = [
+      specialRequests.trim(),
+      appliedCoupon ? `[Cupón aplicado: ${appliedCoupon.code} (-${appliedCoupon.discountPercentage}%)]` : '',
+    ].filter(Boolean).join(' | ');
+
     const newReservation: Reservation = {
       id: `res-${Date.now()}`,
       code: `PM-${randomDigits}`,
@@ -186,11 +240,13 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
       nights,
       guestsCount,
       estimatedArrival,
-      specialRequests: specialRequests.trim() || undefined,
+      specialRequests: specialReqsWithCoupon || undefined,
       pricePerNight,
       subtotal,
-      discountAmount,
-      discountPercentage,
+      discountAmount: totalDiscountAmount,
+      discountPercentage: hasDiscount ? discountPercentage : 0,
+      couponCode: appliedCoupon?.code,
+      couponDiscount: couponDiscountAmount,
       totalPrice,
       depositAmount,
       balanceDue,
@@ -235,7 +291,7 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
 📅 *Ingreso:* ${res.checkIn} (14:00 a 20:00hs)
 📅 *Salida:* ${res.checkOut} (10:00hs)
 🌙 *Estadía:* ${res.nights} noche(s) para ${res.guestsCount} persona(s)
-💰 *Total:* ${formatCurrency(res.totalPrice)}
+💰 *Total:* ${formatCurrency(res.totalPrice)}${res.couponCode ? ` (Cupón ${res.couponCode}: -${formatCurrency(res.couponDiscount || 0)})` : ''}
 💳 *Seña 50%:* ${formatCurrency(res.depositAmount)}
 🕒 *Llegada estimada:* ${res.estimatedArrival}
 ${res.specialRequests ? `📝 *Observaciones:* ${res.specialRequests}` : ''}
@@ -259,6 +315,10 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
     setGuestOrigin('');
     setSpecialRequests('');
     setFormError(null);
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError(null);
+    setCouponSuccess(null);
   };
 
   return (
@@ -532,17 +592,105 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                       </div>
 
                       {hasDiscount && (
-                        <div className="flex justify-between text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100">
+                        <div className="flex justify-between text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100">
                           <span className="flex items-center gap-1 text-xs">
                             <Sparkles className="w-3.5 h-3.5" />
                             Bonificación 3+ noches ({discountPercentage}%)
                           </span>
-                          <span>-{formatCurrency(discountAmount)}</span>
+                          <span>-{formatCurrency(stayDiscountAmount)}</span>
+                        </div>
+                      )}
+
+                      {/* Espacio para Cupón de Descuento */}
+                      <div className="pt-2 pb-1 border-t border-slate-100 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <Ticket className="w-3.5 h-3.5 text-purple-600" />
+                            <span>¿Tenés un cupón de descuento?</span>
+                          </label>
+                          {appliedCoupon && (
+                            <button
+                              type="button"
+                              onClick={handleRemoveCoupon}
+                              className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                            >
+                              Quitar cupón
+                            </button>
+                          )}
+                        </div>
+
+                        {!appliedCoupon ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={couponInput}
+                              onChange={(e) => {
+                                setCouponInput(e.target.value.toUpperCase());
+                                setCouponError(null);
+                              }}
+                              placeholder="Ingresá tu código"
+                              className="flex-1 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleApplyCoupon}
+                              className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                            >
+                              Aplicar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="p-2.5 rounded-xl bg-purple-50/80 border border-purple-200 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-purple-700 shrink-0" />
+                              <div className="text-xs">
+                                <span className="font-mono font-bold text-purple-950">
+                                  {appliedCoupon.code}
+                                </span>
+                                <span className="ml-1.5 font-bold text-purple-700">
+                                  (-{appliedCoupon.discountPercentage}% OFF)
+                                </span>
+                              </div>
+                            </div>
+                            <span className="text-xs font-bold text-purple-900">
+                              -{formatCurrency(couponDiscountAmount)}
+                            </span>
+                          </div>
+                        )}
+
+                        {couponError && (
+                          <p className="text-[11px] text-red-600 font-medium flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            <span>{couponError}</span>
+                          </p>
+                        )}
+                        {couponSuccess && (
+                          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                            <Check className="w-3 h-3 shrink-0" />
+                            <span>{couponSuccess}</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {appliedCoupon && (
+                        <div className="flex justify-between text-purple-700 font-semibold bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-100 text-xs">
+                          <span className="flex items-center gap-1">
+                            <Ticket className="w-3.5 h-3.5" />
+                            Descuento Cupón {appliedCoupon.code} ({appliedCoupon.discountPercentage}%)
+                          </span>
+                          <span className="font-bold">-{formatCurrency(couponDiscountAmount)}</span>
                         </div>
                       )}
 
                       <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
-                        <span className="text-base font-bold text-slate-900">Total Estadía:</span>
+                        <div>
+                          <span className="text-base font-bold text-slate-900 block">Total Estadía:</span>
+                          {totalDiscountAmount > 0 && (
+                            <span className="text-[11px] font-bold text-emerald-700">
+                              ¡Ahorrás {formatCurrency(totalDiscountAmount)} en total!
+                            </span>
+                          )}
+                        </div>
                         <span className="text-2xl font-black text-[#4D7080]">
                           {formatCurrency(totalPrice)}
                         </span>
@@ -623,9 +771,21 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                   <h3 className="text-xl font-bold text-slate-900">
                     Paso 2: Datos del Titular de la Reserva
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Estadía del {checkInDate} al {checkOutDate} ({nights} noche{nights > 1 ? 's' : ''}, {guestsCount} persona{guestsCount > 1 ? 's' : ''})
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <p className="text-xs text-slate-600 font-medium">
+                      Estadía del {checkInDate} al {checkOutDate} ({nights} noche{nights > 1 ? 's' : ''}, {guestsCount} persona{guestsCount > 1 ? 's' : ''})
+                    </p>
+                    <span className="text-slate-300">·</span>
+                    <span className="text-xs font-bold text-slate-800">
+                      Total: {formatCurrency(totalPrice)}
+                    </span>
+                    {appliedCoupon && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+                        <Ticket className="w-3 h-3" />
+                        Cupón {appliedCoupon.code} (-{appliedCoupon.discountPercentage}% OFF)
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -805,6 +965,12 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                   <p className="text-sm font-black text-[#4D7080] mt-0.5">
                     {formatCurrency(confirmedReservation.totalPrice)}
                   </p>
+                  {confirmedReservation.couponCode && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200 mt-1">
+                      <Ticket className="w-2.5 h-2.5" /> Cupón: {confirmedReservation.couponCode}
+                      {confirmedReservation.couponDiscount ? ` (-${formatCurrency(confirmedReservation.couponDiscount)})` : ''}
+                    </span>
+                  )}
                 </div>
               </div>
 
