@@ -107,23 +107,9 @@ export default function App() {
     hostSettings.blockedDates
   );
 
-  // Dates and guests state for public booking
-  const [checkInDate, setCheckInDate] = useState<string>(() => {
-    const today = new Date();
-    const daysUntilFriday = (5 - today.getDay() + 7) % 7 || 7;
-    const nextFriday = new Date(today);
-    nextFriday.setDate(today.getDate() + daysUntilFriday);
-    return formatDate(nextFriday);
-  });
-
-  const [checkOutDate, setCheckOutDate] = useState<string>(() => {
-    const today = new Date();
-    const daysUntilFriday = (5 - today.getDay() + 7) % 7 || 7;
-    const nextSunday = new Date(today);
-    nextSunday.setDate(today.getDate() + daysUntilFriday + 3);
-    return formatDate(nextSunday);
-  });
-
+  // Dates and guests state for public booking (empty by default so calendar starts clean without preselection)
+  const [checkInDate, setCheckInDate] = useState<string>('');
+  const [checkOutDate, setCheckOutDate] = useState<string>('');
   const [guestsCount, setGuestsCount] = useState<number>(2);
 
   // Gallery photo selection for instant lightbox opening

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   buildDateStr,
   getTodayDateStr,
@@ -48,6 +48,17 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
     }
     return todayParts.month;
   });
+
+  // Sync calendar month when an external date is selected (e.g. from hero search)
+  useEffect(() => {
+    if (checkInDate) {
+      const p = parseDateParts(checkInDate);
+      if (p) {
+        setCurrentYear(p.year);
+        setCurrentMonth(p.month);
+      }
+    }
+  }, [checkInDate]);
 
   const todayStr = getTodayDateStr();
 

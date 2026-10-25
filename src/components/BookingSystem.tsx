@@ -306,6 +306,8 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
   };
 
   const resetForm = () => {
+    setCheckInDate('');
+    setCheckOutDate('');
     setStep(1);
     setConfirmedReservation(null);
     setGuestName('');
@@ -315,6 +317,7 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
     setGuestOrigin('');
     setSpecialRequests('');
     setFormError(null);
+    setStepSuccessNotice(null);
     setAppliedCoupon(null);
     setCouponInput('');
     setCouponError(null);

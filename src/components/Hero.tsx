@@ -38,8 +38,9 @@ export const Hero: React.FC<HeroProps> = ({
   onOpenBrochure,
   unavailableDates = new Set(),
 }) => {
+  const hasRangeSelected = Boolean(checkInDate && checkOutDate);
   const rangeCheck = checkRangeAvailability(checkInDate, checkOutDate, unavailableDates);
-  const isAvailable = rangeCheck.available;
+  const isConflict = hasRangeSelected && !rangeCheck.available;
 
   return (
     <div className="relative overflow-hidden bg-gradient-to-b from-[#375663] via-[#4D7080] to-[#FBF8F3] pt-6 pb-20">
@@ -248,16 +249,22 @@ export const Hero: React.FC<HeroProps> = ({
               <button
                 onClick={onSearchClick}
                 className={`w-full md:w-auto px-6 py-3 font-bold rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 text-sm cursor-pointer ${
-                  !isAvailable
+                  isConflict
                     ? 'bg-amber-600 hover:bg-amber-700 text-white'
                     : 'bg-[#4D7080] hover:bg-[#375663] text-white'
                 }`}
               >
-                <span>{!isAvailable ? 'Ver Calendario Libre' : 'Cotizar y Reservar'}</span>
+                <span>
+                  {isConflict
+                    ? 'Ver Calendario Libre'
+                    : hasRangeSelected
+                    ? 'Cotizar y Reservar'
+                    : 'Elegir Fechas en el Calendario'}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              {!isAvailable && (
+              {isConflict && (
                 <span className="text-[11px] text-red-600 font-bold mt-1 flex items-center gap-1">
                   <Ban className="w-3 h-3" /> Fecha ocupada o bloqueada
                 </span>
