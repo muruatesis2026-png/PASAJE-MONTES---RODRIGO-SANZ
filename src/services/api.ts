@@ -106,17 +106,22 @@ export const api = {
       });
       if (res.ok) {
         const saved = await res.json();
+        const local = localStorage.getItem(STORAGE_KEY);
+        const list: Reservation[] = local ? JSON.parse(local) : INITIAL_RESERVATIONS;
+        const filtered = list.filter((r) => r.id !== saved.id);
+        const updatedList = [saved, ...filtered];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
         triggerDbUpdateEvent();
         return saved;
       }
     } catch {
-      // Fallback
+      // Fallback to local storage if offline
     }
-    // Fallback to local
     const local = localStorage.getItem(STORAGE_KEY);
     const list: Reservation[] = local ? JSON.parse(local) : INITIAL_RESERVATIONS;
-    list.unshift(reservation);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    const filtered = list.filter((r) => r.id !== reservation.id);
+    const updatedList = [reservation, ...filtered];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
     triggerDbUpdateEvent();
     return reservation;
   },
@@ -133,6 +138,15 @@ export const api = {
       });
       if (res.ok) {
         const updated = await res.json();
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) {
+          const list: Reservation[] = JSON.parse(local);
+          const idx = list.findIndex((r) => r.id === id);
+          if (idx !== -1) {
+            list[idx] = updated;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+          }
+        }
         triggerDbUpdateEvent();
         return updated;
       }
@@ -160,6 +174,12 @@ export const api = {
         headers: { 'Cache-Control': 'no-cache' },
       });
       if (res.ok) {
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) {
+          const list: Reservation[] = JSON.parse(local);
+          const filtered = list.filter((r) => r.id !== id);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+        }
         triggerDbUpdateEvent();
         return true;
       }
@@ -243,6 +263,7 @@ export const api = {
       });
       if (res.ok) {
         const updated = await res.json();
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
         triggerDbUpdateEvent();
         return updated;
       }
@@ -272,5 +293,17 @@ export const api = {
     }
     const settings = await this.getSettings();
     return pin === settings.hostPin || pin === '2026';
+  },
+
+  async checkHealth(): Promise<boolean> {
+    try {
+      const res = await fetch('/api/health', {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   },
 };

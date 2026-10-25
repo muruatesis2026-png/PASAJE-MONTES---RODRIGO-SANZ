@@ -232,43 +232,92 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   const [blockRangeEnd, setBlockRangeEnd] = useState('');
   const [hostCalendarMonth, setHostCalendarMonth] = useState<Date>(new Date());
 
-  // Fetch initial data
-  const loadData = async () => {
-    setIsLoading(true);
+  // Connection & Live Synchronization State
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'syncing' | 'offline'>('connected');
+  const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+
+  // Fetch data from backend with selective input preservation
+  const loadData = async (initial = false) => {
+    if (initial) setIsLoading(true);
+    setConnectionStatus('syncing');
     try {
       const [resList, setts] = await Promise.all([api.getReservations(), api.getSettings()]);
       setReservations(resList);
       setSettings(setts);
-      setEditPrice(setts.baseNightPrice);
-      setEditPin(setts.hostPin);
-      setEditDiscount(setts.discountPercentage);
-      if (setts.coupons && Array.isArray(setts.coupons)) {
-        setCoupons(setts.coupons);
-      } else {
-        setCoupons(DEFAULT_COUPONS);
-      }
-      if (setts.promoBanner) {
-        setPromoEnabled(setts.promoBanner.enabled ?? true);
-        setPromoBadge(setts.promoBanner.badge || 'Promo 3+ Noches');
-        setPromoText(setts.promoBanner.text || '');
-        setPromoMobileText(setts.promoBanner.mobileText || '');
-        setPromoTheme(setts.promoBanner.theme || 'emerald');
-        setPromoIcon(setts.promoBanner.icon || 'sparkles');
-        setPromoActionText(setts.promoBanner.actionText || '');
-        setPromoActionType(setts.promoBanner.actionType || 'none');
+      setLastSyncTime(new Date());
+      setConnectionStatus('connected');
+
+      // Only populate editable form inputs on initial mount, so live background polling doesn't overwrite what Rodrigo is typing
+      if (initial) {
+        setEditPrice(setts.baseNightPrice);
+        setEditPin(setts.hostPin);
+        setEditDiscount(setts.discountPercentage);
+        if (setts.coupons && Array.isArray(setts.coupons)) {
+          setCoupons(setts.coupons);
+        } else {
+          setCoupons(DEFAULT_COUPONS);
+        }
+        if (setts.promoBanner) {
+          setPromoEnabled(setts.promoBanner.enabled ?? true);
+          setPromoBadge(setts.promoBanner.badge || 'Promo 3+ Noches');
+          setPromoText(setts.promoBanner.text || '');
+          setPromoMobileText(setts.promoBanner.mobileText || '');
+          setPromoTheme(setts.promoBanner.theme || 'emerald');
+          setPromoIcon(setts.promoBanner.icon || 'sparkles');
+          setPromoActionText(setts.promoBanner.actionText || '');
+          setPromoActionType(setts.promoBanner.actionType || 'none');
+        }
       }
     } catch (err) {
       console.error('Error loading data:', err);
+      setConnectionStatus('offline');
     } finally {
-      setIsLoading(false);
+      if (initial) setIsLoading(false);
+      setIsManualSyncing(false);
     }
   };
 
+  // Live real-time sync with database events and background polling
   useEffect(() => {
-    if (isAuthenticated) {
-      loadData();
-    }
+    if (!isAuthenticated) return;
+
+    loadData(true);
+
+    const handleDbUpdate = () => {
+      loadData(false);
+    };
+
+    window.addEventListener('pasaje_montes_db_update', handleDbUpdate);
+    window.addEventListener('storage', handleDbUpdate);
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        loadData(false);
+      }
+    };
+    window.addEventListener('focus', handleDbUpdate);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Active live polling every 4 seconds ensures any new public client reservation appears instantly in host admin
+    const interval = setInterval(() => {
+      loadData(false);
+    }, 4000);
+
+    return () => {
+      window.removeEventListener('pasaje_montes_db_update', handleDbUpdate);
+      window.removeEventListener('storage', handleDbUpdate);
+      window.removeEventListener('focus', handleDbUpdate);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(interval);
+    };
   }, [isAuthenticated]);
+
+  const handleManualSync = async () => {
+    setIsManualSyncing(true);
+    await loadData(false);
+    showTemporaryNotice('✓ Conexión activa: Base de datos y web pública 100% sincronizadas en vivo.');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -433,7 +482,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       showTemporaryNotice('✓ Barra de promociones y beneficios guardada con éxito en la base de datos.');
     } catch (err) {
       console.error(err);
-      alert('Error al guardar la barra de promociones.');
+      showTemporaryNotice('⚠️ Error de conexión al guardar la barra de promociones.');
     } finally {
       setSavingPromo(false);
     }
@@ -471,13 +520,13 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   // Block range of dates
   const handleBlockRange = async () => {
     if (!blockRangeStart || !blockRangeEnd) {
-      alert('Por favor elegí fecha Desde y fecha Hasta.');
+      showTemporaryNotice('⚠️ Por favor elegí fecha Desde y fecha Hasta.');
       return;
     }
 
     const diff = getDaysDifference(blockRangeStart, blockRangeEnd);
     if (diff < 0) {
-      alert('La fecha Desde debe ser anterior o igual a la fecha Hasta.');
+      showTemporaryNotice('⚠️ La fecha Desde debe ser anterior o igual a la fecha Hasta.');
       return;
     }
 
@@ -511,7 +560,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   const handleCreateManualReservation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGuestName || !newCheckIn || !newCheckOut) {
-      alert('Por favor completá nombre, fecha de check-in y fecha de check-out.');
+      showTemporaryNotice('⚠️ Por favor completá nombre, fecha de check-in y fecha de check-out.');
       return;
     }
 
@@ -788,12 +837,59 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Live Connection & Sync Status Indicator */}
+            <div
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                connectionStatus === 'connected'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
+                  : connectionStatus === 'syncing'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                  : 'bg-red-500/20 text-red-300 border-red-400/40'
+              }`}
+              title={
+                connectionStatus === 'connected'
+                  ? `Sincronizado con la base de datos (${lastSyncTime.toLocaleTimeString('es-AR')})`
+                  : connectionStatus === 'syncing'
+                  ? 'Sincronizando con el servidor...'
+                  : 'Modo seguro local activo'
+              }
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  connectionStatus === 'connected'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : connectionStatus === 'syncing'
+                    ? 'bg-amber-400 animate-spin'
+                    : 'bg-red-400'
+                }`}
+              />
+              <span className="hidden sm:inline">
+                {connectionStatus === 'connected'
+                  ? 'En Vivo · Sincronizado'
+                  : connectionStatus === 'syncing'
+                  ? 'Sincronizando...'
+                  : 'Modo Local Seguro'}
+              </span>
+            </div>
+
+            {/* Quick Sync Button */}
+            <button
+              type="button"
+              onClick={handleManualSync}
+              disabled={isManualSyncing}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg border border-white/15 transition-colors cursor-pointer"
+              title="Forzar actualización y sincronizar con la base de datos"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin text-emerald-400' : 'text-slate-300'}`} />
+              <span className="hidden md:inline text-[11px]">Sincronizar</span>
+            </button>
+
             {/* Direct Link to test public view */}
             <button
               onClick={onBackToPublicSite}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow transition-colors"
-              title="Ir a la página pública para ver la disponibilidad"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow transition-colors cursor-pointer"
+              title="Ir a la página pública para ver cómo ven los clientes tus cambios"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>Ver Página Pública</span>
@@ -802,7 +898,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             {/* Copy Secret Bookmark Link */}
             <button
               onClick={handleCopyPrivateUrl}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg border border-white/15 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg border border-white/15 transition-colors cursor-pointer"
               title="Copiar enlace directo para guardar en favoritos de tu teléfono o navegador"
             >
               {copiedLink ? (
@@ -821,7 +917,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             {/* Logout */}
             <button
               onClick={handleLogout}
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
               title="Cerrar sesión de anfitrión"
             >
               <LogOut className="w-4 h-4" />

@@ -182,6 +182,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               Consultar Mi Reserva
             </button>
+            {onOpenAdmin && (
+              <>
+                <span className="text-white/20 hidden md:inline">|</span>
+                <button
+                  onClick={onOpenAdmin}
+                  className="hidden md:inline hover:underline text-slate-300 hover:text-white font-medium"
+                  title="Panel de administración exclusivo de Rodrigo"
+                >
+                  🔒 Admin Anfitrión
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -324,10 +336,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>WhatsApp: {LODGING_INFO.phoneDisplay} (Rodrigo)</span>
               </a>
 
-              <div className="flex justify-start items-center text-[11px] text-slate-400 pt-1">
+              <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1 border-t border-white/10 mt-1">
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> Benito Bracamonte 201 · Cruz del Eje
                 </span>
+                {onOpenAdmin && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenAdmin();
+                    }}
+                    className="text-slate-300 hover:text-white flex items-center gap-1 font-semibold py-1 px-2 rounded hover:bg-white/10"
+                    title="Panel de administración de Rodrigo"
+                  >
+                    <span>🔒 Admin</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
