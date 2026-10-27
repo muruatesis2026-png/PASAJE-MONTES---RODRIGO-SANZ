@@ -12,8 +12,12 @@ import {
   Copy,
   Check,
   BookOpen,
+  Printer,
+  Download,
+  FileCheck,
 } from 'lucide-react';
 import { GuestGuideModal } from './GuestGuideModal';
+import { ReservationVoucherModal } from './ReservationVoucherModal';
 
 interface MyReservationsModalProps {
   isOpen: boolean;
@@ -30,6 +34,7 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
   const [searched, setSearched] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [selectedGuideReservation, setSelectedGuideReservation] = useState<Reservation | null>(null);
+  const [selectedVoucherReservation, setSelectedVoucherReservation] = useState<Reservation | null>(null);
 
   if (!isOpen) return null;
 
@@ -171,6 +176,33 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
                   </div>
                 </div>
 
+                {res.status === 'confirmada' && (
+                  <div className="bg-emerald-50 border border-emerald-200/90 p-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-emerald-950">
+                          ¡Seña del 50% Confirmada! Lugar asegurado.
+                        </p>
+                        <p className="text-[11px] text-emerald-700">
+                          Tu voucher oficial y comprobante definitivo ya está listo para imprimir o guardar.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVoucherReservation(res)}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer shrink-0"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Imprimir / Guardar Voucher</span>
+                    </button>
+                  </div>
+                )}
+
                 {res.status === 'pendiente_sena' && (
                   <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs space-y-2">
                     <p className="font-bold text-slate-800">
@@ -189,6 +221,20 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
                 )}
 
                 <div className="pt-2 flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVoucherReservation(res)}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer ${
+                      res.status === 'confirmada'
+                        ? 'bg-[#4D7080] hover:bg-[#375663] text-white shadow-sm'
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                    }`}
+                    title="Imprimir o guardar voucher y comprobante en PDF"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>{res.status === 'confirmada' ? 'Imprimir / Guardar Voucher' : 'Ver Comprobante Solicitud'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setSelectedGuideReservation(res)}
@@ -220,6 +266,15 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
             onClose={() => setSelectedGuideReservation(null)}
             reservationCode={selectedGuideReservation.code}
             guestName={selectedGuideReservation.guestName}
+          />
+        )}
+
+        {/* Official Printable Voucher Modal */}
+        {selectedVoucherReservation && (
+          <ReservationVoucherModal
+            isOpen={!!selectedVoucherReservation}
+            onClose={() => setSelectedVoucherReservation(null)}
+            reservation={selectedVoucherReservation}
           />
         )}
       </div>

@@ -301,10 +301,6 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
     return `https://wa.me/${LODGING_INFO.phoneRaw}?text=${encodeURIComponent(text)}`;
   };
 
-  const handlePrintVoucher = () => {
-    window.print();
-  };
-
   const resetForm = () => {
     setCheckInDate('');
     setCheckOutDate('');
@@ -1100,19 +1096,18 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
               </button>
 
               <button
-                onClick={handlePrintVoucher}
-                className="w-full sm:w-auto px-5 py-3.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-xl border border-slate-300 shadow-sm transition-colors flex items-center justify-center gap-2 text-sm"
-              >
-                <Download className="w-4 h-4" />
-                <span>Imprimir / Guardar Voucher</span>
-              </button>
-
-              <button
                 onClick={resetForm}
-                className="w-full sm:w-auto px-4 py-3.5 text-slate-500 hover:text-slate-800 text-xs font-semibold"
+                className="w-full sm:w-auto px-5 py-3.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-xl border border-slate-300 shadow-sm transition-colors flex items-center justify-center gap-2 text-sm cursor-pointer"
               >
                 Hacer otra reserva
               </button>
+            </div>
+
+            {/* Note explaining voucher print availability in Consultar Mi Reserva */}
+            <div className="mt-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center max-w-xl mx-auto print:hidden">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                ℹ️ <strong>Voucher Definitivo:</strong> Una vez que envíes el comprobante de transferencia y Rodrigo confirme la seña del 50%, podrás imprimir o descargar tu voucher oficial con el sello de confirmación en la sección <strong>«Consultar Mi Reserva»</strong> usando tu código <strong>{confirmedReservation.code}</strong>.
+              </p>
             </div>
 
             {/* Interactive Guest Guide Modal */}
