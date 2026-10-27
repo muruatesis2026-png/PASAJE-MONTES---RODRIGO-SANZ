@@ -101,21 +101,6 @@ export const Hero: React.FC<HeroProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-4 pt-2">
-              <button
-                onClick={onSearchClick}
-                className="inline-flex items-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm sm:text-base cursor-pointer"
-              >
-                <Calendar className="w-5 h-5" />
-                <span>Consultar y Reservar en Línea</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={onOpenBrochure}
-                className="inline-flex items-center gap-2 px-5 py-3.5 bg-white/15 hover:bg-white/20 text-white font-semibold rounded-xl border border-white/25 transition-colors text-sm cursor-pointer"
-              >
-                <span>Ver Folleto Oficial</span>
-              </button>
             </div>
           </div>
 

@@ -110,7 +110,7 @@ const DEFAULT_SETTINGS = {
     mobileText: 'Bonificación especial a partir de 3 noches.',
     theme: 'emerald',
     icon: 'sparkles',
-    actionText: 'Reservar ahora',
+    
     actionType: 'booking',
   },
 };

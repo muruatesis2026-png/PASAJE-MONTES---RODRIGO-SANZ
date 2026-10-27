@@ -727,10 +727,10 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             </div>
             <div>
               <span className="text-[11px] font-bold uppercase tracking-widest text-[#4D7080]">
-                Acceso Privado & Exclusivo
+                Acceso privado
               </span>
               <h2 className="text-2xl font-black text-slate-900 mt-1">
-                Panel del Anfitrión
+                Panel del AAdministración
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 Base de datos de reservas de {LODGING_INFO.fullName}.
@@ -742,7 +742,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                 <span>PIN de Seguridad</span>
-                <span className="text-[11px] text-slate-400 font-normal">PIN inicial: 2026</span>
+                
               </label>
 
               <div className="relative">
@@ -754,7 +754,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                     setPinInput(e.target.value);
                     setPinError(null);
                   }}
-                  placeholder="Ingresá tu PIN (ej: 2026)"
+                  placeholder="Ingresá tu PIN"
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-center text-lg font-mono tracking-widest font-bold focus:ring-2 focus:ring-[#4D7080] focus:outline-none"
                   autoFocus
                 />
@@ -791,9 +791,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
               onClick={onBackToPublicSite}
               className="hover:text-slate-900 underline flex items-center gap-1"
             >
-              ← Volver al sitio público
             </button>
-            <span className="text-[10px] text-slate-400">Rodrigo Sanz</span>
           </div>
         </div>
       </div>
@@ -828,12 +826,9 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                   Pasaje Montes
                 </span>
                 <span className="text-[10px] uppercase font-bold tracking-widest bg-emerald-500 text-slate-950 px-2 py-0.5 rounded-full">
-                  Base de Datos Privada
+                  Panel de Administración
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300">
-                Panel exclusivo del anfitrión: <strong>Rodrigo Sanz</strong> · Cruz del Eje
-              </p>
             </div>
           </div>
 

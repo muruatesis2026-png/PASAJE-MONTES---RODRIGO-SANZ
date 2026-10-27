@@ -173,13 +173,6 @@ export const PhotoGallery: React.FC<PhotoGalleryProps> = ({
               Reservá con el 50% de seña por transferencia y asegurá tu descanso camino al lago.
             </p>
           </div>
-          <button
-            onClick={onOpenBooking}
-            className="shrink-0 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm shadow transition-colors flex items-center gap-2"
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Reservar Ahora</span>
-          </button>
         </div>
       </div>
 

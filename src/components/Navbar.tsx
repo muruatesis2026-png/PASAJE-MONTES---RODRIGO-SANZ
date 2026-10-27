@@ -184,14 +184,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
             {onOpenAdmin && (
               <>
-                <span className="text-white/20 hidden md:inline">|</span>
-                <button
-                  onClick={onOpenAdmin}
-                  className="hidden md:inline hover:underline text-slate-300 hover:text-white font-medium"
-                  title="Panel de administración exclusivo de Rodrigo"
-                >
-                  🔒 Admin Anfitrión
-                </button>
+                <span className="text-white/20 hidden md:inline"></span>
+                
               </>
             )}
           </div>
@@ -229,15 +223,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Desktop Action Buttons */}
           <div className="hidden md:flex items-center gap-3">
-            <button
-              onClick={onOpenBrochure}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-100 hover:text-white bg-white/10 hover:bg-white/15 rounded-lg transition-colors border border-white/15"
-              title="Ver folleto en PDF"
-            >
-              <FileText className="w-4 h-4 text-slate-200" />
-              <span>Folleto PDF</span>
-            </button>
-
             <button
               onClick={onOpenBooking}
               className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0"

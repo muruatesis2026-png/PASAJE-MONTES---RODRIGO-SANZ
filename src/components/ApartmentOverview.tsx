@@ -175,12 +175,7 @@ export const ApartmentOverview: React.FC<ApartmentOverviewProps> = ({
           </div>
 
           <div className="shrink-0 flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            <button
-              onClick={onOpenBooking}
-              className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow transition-colors text-sm text-center"
-            >
-              Consultar Fechas
-            </button>
+           
           </div>
         </div>
       </div>

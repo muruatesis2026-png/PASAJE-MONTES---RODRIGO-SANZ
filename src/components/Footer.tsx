@@ -69,7 +69,7 @@ export const Footer: React.FC<FooterProps> = ({
 
             <div className="pt-2 flex items-center gap-3 text-xs text-emerald-300">
               <Shield className="w-4 h-4" />
-              <span>Atención personalizada por su dueño · Rodrigo Sanz</span>
+              <span>Atención personalizada por su dueño</span>
             </div>
           </div>
 
@@ -176,7 +176,7 @@ export const Footer: React.FC<FooterProps> = ({
         {/* Bottom bar */}
         <div className="mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-3">
           <p>
-            © {new Date().getFullYear()} {LODGING_INFO.fullName}. Todos los derechos reservados.
+            © {new Date().getFullYear()} {LODGING_INFO.fullName}. Creado por Eduardo Murua - Contacto: 3549454652.
             <button
               onClick={onOpenAdmin}
               className="ml-2 text-slate-500 hover:text-slate-400 opacity-20 hover:opacity-100 transition-opacity"
@@ -186,7 +186,7 @@ export const Footer: React.FC<FooterProps> = ({
             </button>
           </p>
           <p className="flex items-center gap-1">
-            <span>Cruz del Eje, Córdoba · Un descanso camino al lago</span>
+            <span>Cruz del Eje, Córdoba</span>
           </p>
         </div>
       </div>
