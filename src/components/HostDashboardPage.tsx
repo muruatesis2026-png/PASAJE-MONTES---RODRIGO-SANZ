@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon, DiscountCoupon, ActivityLog } from '../types';
+import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon, DiscountCoupon, CommercialPartnership, ActivityLog } from '../types';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
-import { api, HostSettings, DEFAULT_PROMO_BANNER, DEFAULT_COUPONS, getPricePerNightForGuests } from '../services/api';
+import { api, HostSettings, DEFAULT_PROMO_BANNER, DEFAULT_COUPONS, DEFAULT_PARTNERSHIPS, getPricePerNightForGuests } from '../services/api';
 import { formatDate, formatFriendlyDate, getAllUnavailableDates, getDaysDifference, addDays, checkRangeAvailability } from '../utils/dateUtils';
 import { generateDepositConfirmationMessage } from '../utils/emailTemplate';
 import { Logo } from './Logo';
@@ -64,6 +64,9 @@ import {
   HelpCircle,
   XCircle,
   X,
+  Store,
+  Edit2,
+  MapPin,
 } from 'lucide-react';
 
 interface HostDashboardPageProps {
@@ -237,6 +240,20 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   const [newCouponDesc, setNewCouponDesc] = useState('');
   const [couponFormError, setCouponFormError] = useState<string | null>(null);
 
+  // Commercial Partnerships state (managed in "Promos & barra superior" tab)
+  const [partnerships, setPartnerships] = useState<CommercialPartnership[]>(DEFAULT_PARTNERSHIPS);
+  const [partBusinessName, setPartBusinessName] = useState('');
+  const [partCategory, setPartCategory] = useState('');
+  const [partDiscountText, setPartDiscountText] = useState('');
+  const [partDetails, setPartDetails] = useState('');
+  const [partValidHours, setPartValidHours] = useState('');
+  const [partAddress, setPartAddress] = useState('');
+  const [partWhatsapp, setPartWhatsapp] = useState('');
+  const [partHowToRedeem, setPartHowToRedeem] = useState('');
+  const [editingPartId, setEditingPartId] = useState<string | null>(null);
+  const [partFormError, setPartFormError] = useState<string | null>(null);
+  const [savingPartnership, setSavingPartnership] = useState(false);
+
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<'all' | 'pendiente_sena' | 'confirmada' | 'cancelada'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -302,6 +319,11 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
           setCoupons(setts.coupons);
         } else {
           setCoupons(DEFAULT_COUPONS);
+        }
+        if (setts.partnerships && Array.isArray(setts.partnerships)) {
+          setPartnerships(setts.partnerships);
+        } else {
+          setPartnerships(DEFAULT_PARTNERSHIPS);
         }
         if (setts.promoBanner) {
           setPromoEnabled(setts.promoBanner.enabled ?? true);
@@ -629,6 +651,140 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     setPromoActionType(preset.actionType || 'none');
     setPromoEnabled(true);
     showTemporaryNotice(`Plantilla "${preset.title}" cargada en el formulario. Guardá para aplicarla.`);
+  };
+
+  const handleSaveOrUpdatePartnership = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPartFormError(null);
+
+    const name = partBusinessName.trim();
+    const discount = partDiscountText.trim();
+    if (!name) {
+      setPartFormError('Por favor indicá el nombre del comercio (ej: Panadería Kyrios).');
+      return;
+    }
+    if (!discount) {
+      setPartFormError('Por favor indicá el beneficio o descuento (ej: 20% OFF en meriendas).');
+      return;
+    }
+
+    setSavingPartnership(true);
+    try {
+      let updatedList: CommercialPartnership[];
+      if (editingPartId) {
+        // Edit existing
+        updatedList = partnerships.map((p) =>
+          p.id === editingPartId
+            ? {
+                ...p,
+                businessName: name,
+                category: partCategory.trim() || 'Comercio Amigo',
+                discountText: discount,
+                details: partDetails.trim() || `Beneficio especial para huéspedes de Pasaje Montes: ${discount}`,
+                validHours: partValidHours.trim() || undefined,
+                address: partAddress.trim() || undefined,
+                whatsapp: partWhatsapp.trim() || undefined,
+                howToRedeem: partHowToRedeem.trim() || undefined,
+              }
+            : p
+        );
+        showTemporaryNotice(`✓ Convenio con "${name}" modificado exitosamente.`);
+      } else {
+        // Create new
+        const newPart: CommercialPartnership = {
+          id: `part-${Date.now()}`,
+          businessName: name,
+          category: partCategory.trim() || 'Comercio Amigo',
+          discountText: discount,
+          details: partDetails.trim() || `Beneficio especial para huéspedes de Pasaje Montes: ${discount}`,
+          validHours: partValidHours.trim() || undefined,
+          address: partAddress.trim() || undefined,
+          whatsapp: partWhatsapp.trim() || undefined,
+          howToRedeem: partHowToRedeem.trim() || undefined,
+          enabled: true,
+          createdAt: new Date().toISOString(),
+        };
+        updatedList = [newPart, ...partnerships];
+        showTemporaryNotice(`✓ Nuevo convenio con "${name}" guardado y publicado en la web.`);
+      }
+
+      setPartnerships(updatedList);
+      const updated = await api.updateSettings({ partnerships: updatedList });
+      setSettings(updated);
+
+      // Reset form
+      setPartBusinessName('');
+      setPartCategory('');
+      setPartDiscountText('');
+      setPartDetails('');
+      setPartValidHours('');
+      setPartAddress('');
+      setPartWhatsapp('');
+      setPartHowToRedeem('');
+      setEditingPartId(null);
+    } catch (err) {
+      console.error('Error saving partnership:', err);
+      showTemporaryNotice('⚠️ Error al guardar el convenio en la base de datos.');
+    } finally {
+      setSavingPartnership(false);
+    }
+  };
+
+  const handleEditPartnership = (p: CommercialPartnership) => {
+    setEditingPartId(p.id);
+    setPartBusinessName(p.businessName);
+    setPartCategory(p.category || '');
+    setPartDiscountText(p.discountText);
+    setPartDetails(p.details);
+    setPartValidHours(p.validHours || '');
+    setPartAddress(p.address || '');
+    setPartWhatsapp(p.whatsapp || '');
+    setPartHowToRedeem(p.howToRedeem || '');
+    setPartFormError(null);
+    showTemporaryNotice(`Editando convenio con "${p.businessName}". Hacé los cambios en el formulario.`);
+  };
+
+  const handleCancelEditPartnership = () => {
+    setEditingPartId(null);
+    setPartBusinessName('');
+    setPartCategory('');
+    setPartDiscountText('');
+    setPartDetails('');
+    setPartValidHours('');
+    setPartAddress('');
+    setPartWhatsapp('');
+    setPartHowToRedeem('');
+    setPartFormError(null);
+  };
+
+  const handleTogglePartnership = async (id: string) => {
+    const updatedList = partnerships.map((p) =>
+      p.id === id ? { ...p, enabled: !p.enabled } : p
+    );
+    setPartnerships(updatedList);
+    try {
+      const updated = await api.updateSettings({ partnerships: updatedList });
+      setSettings(updated);
+      const target = updatedList.find((p) => p.id === id);
+      showTemporaryNotice(`Convenio con "${target?.businessName}" ${target?.enabled ? 'activado' : 'pausado'}.`);
+    } catch (err) {
+      console.error('Error toggling partnership:', err);
+    }
+  };
+
+  const handleDeletePartnership = async (id: string, name: string) => {
+    const updatedList = partnerships.filter((p) => p.id !== id);
+    setPartnerships(updatedList);
+    if (editingPartId === id) {
+      handleCancelEditPartnership();
+    }
+    try {
+      const updated = await api.updateSettings({ partnerships: updatedList });
+      setSettings(updated);
+      showTemporaryNotice(`Convenio con "${name}" eliminado de la base de datos.`);
+    } catch (err) {
+      console.error('Error deleting partnership:', err);
+    }
   };
 
   // Toggle single date block via calendar click
@@ -2357,6 +2513,310 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                 </button>
               </div>
             </form>
+
+            {/* SECCIÓN DE ALIANZAS Y CONVENIOS COMERCIALES (CRUZ DEL EJE) */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                      <Store className="w-3.5 h-3.5 text-emerald-600" />
+                      Comercios de la Ciudad & Red de Descuentos
+                    </span>
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      {partnerships.filter((p) => p.enabled).length} de {partnerships.length} activos
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-extrabold text-slate-900">
+                    Alianzas y Descuentos con Comercios Locales
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+                    Gestioná los convenios del hospedaje con locales de Cruz del Eje. Aparecen en el menú público bajo <strong>&quot;Alianzas y Descuentos&quot;</strong> dentro de la sección de Tarifas y Condiciones.
+                  </p>
+                </div>
+              </div>
+
+              {/* Formulario de Carga / Edición de Convenio */}
+              <form onSubmit={handleSaveOrUpdatePartnership} className="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/90 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                      {editingPartId ? <Edit2 className="w-3.5 h-3.5" /> : <Plus className="w-4 h-4" />}
+                    </div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      {editingPartId ? 'Modificar Convenio Comercial' : 'Agregar Nuevo Convenio Comercial'}
+                    </h4>
+                  </div>
+                  {editingPartId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelEditPartnership}
+                      className="text-xs text-slate-500 hover:text-slate-800 underline font-semibold cursor-pointer"
+                    >
+                      Cancelar Edición
+                    </button>
+                  )}
+                </div>
+
+                {partFormError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+                    <span>{partFormError}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Nombre del comercio */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Nombre del Comercio *
+                    </label>
+                    <input
+                      type="text"
+                      value={partBusinessName}
+                      onChange={(e) => setPartBusinessName(e.target.value)}
+                      placeholder="Ej: Panadería Kyrios"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Rubro / Categoría */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Rubro o Categoría
+                    </label>
+                    <input
+                      type="text"
+                      value={partCategory}
+                      onChange={(e) => setPartCategory(e.target.value)}
+                      placeholder="Ej: Panadería & Cafetería / Gastronomía / Regionales"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Beneficio o Descuento destacado */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Beneficio o Descuento Destacado *
+                    </label>
+                    <input
+                      type="text"
+                      value={partDiscountText}
+                      onChange={(e) => setPartDiscountText(e.target.value)}
+                      placeholder="Ej: 20% OFF en meriendas / 15% en aceites / Postre de cortesía"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Días y Horarios válidos */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Días y Horarios Válidos
+                    </label>
+                    <input
+                      type="text"
+                      value={partValidHours}
+                      onChange={(e) => setPartValidHours(e.target.value)}
+                      placeholder="Ej: Lunes a Sábados de 16:30 a 20:30 hs (tal hora a tal hora)"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Dirección del local */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Dirección en Cruz del Eje
+                    </label>
+                    <input
+                      type="text"
+                      value={partAddress}
+                      onChange={(e) => setPartAddress(e.target.value)}
+                      placeholder="Ej: Av. Sarmiento esq. Eva Perón, Cruz del Eje"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* WhatsApp del comercio */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      WhatsApp de Contacto (con código de área)
+                    </label>
+                    <input
+                      type="text"
+                      value={partWhatsapp}
+                      onChange={(e) => setPartWhatsapp(e.target.value)}
+                      placeholder="Ej: 5493549432101 o 3549 43-2101"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Detalle extendido de la promo */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Detalle de la Promoción o Beneficio
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={partDetails}
+                    onChange={(e) => setPartDetails(e.target.value)}
+                    placeholder="Ej: Reservando hoy lunes 9 de noviembre tenés un 20% off en combos de meriendas artesanales seleccionados."
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* Cómo canjear el beneficio */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Instrucción para el Huésped (Cómo Canjearlo)
+                  </label>
+                  <input
+                    type="text"
+                    value={partHowToRedeem}
+                    onChange={(e) => setPartHowToRedeem(e.target.value)}
+                    placeholder="Ej: Mencioná tu código de reserva de Pasaje Montes o mostrá tu voucher en el mostrador."
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* Botón de acción */}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  {editingPartId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelEditPartnership}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={savingPartnership}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>
+                      {savingPartnership
+                        ? 'Guardando...'
+                        : editingPartId
+                        ? 'Actualizar Convenio'
+                        : 'Guardar y Publicar Convenio'}
+                    </span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Listado de Convenios Existentes */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Convenios Cargados en el Sistema ({partnerships.length})
+                </h4>
+
+                {partnerships.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    No hay convenios cargados todavía. Agregá el primero usando el formulario de arriba.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {partnerships.map((p) => (
+                      <div
+                        key={p.id}
+                        className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+                          p.enabled
+                            ? 'bg-white border-slate-200 shadow-2xs hover:border-emerald-300'
+                            : 'bg-slate-50/80 border-slate-200 opacity-60'
+                        }`}
+                      >
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h5 className="text-sm font-extrabold text-slate-900">
+                              {p.businessName}
+                            </h5>
+                            <span className="text-[10px] font-semibold text-[#4D7080] bg-[#4D7080]/10 px-2 py-0.5 rounded-md">
+                              {p.category || 'Comercio'}
+                            </span>
+                            <span className="text-[11px] font-black text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                              <Tag className="w-3 h-3 text-emerald-600" />
+                              <span>{p.discountText}</span>
+                            </span>
+                            {p.enabled ? (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                Visible en la web
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                                Pausado (Oculto)
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {p.details}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 pt-1">
+                            {p.validHours && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>{p.validHours}</span>
+                              </span>
+                            )}
+                            {p.address && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                <span>{p.address}</span>
+                              </span>
+                            )}
+                            {p.whatsapp && (
+                              <span className="flex items-center gap-1 font-mono text-emerald-700">
+                                <Phone className="w-3 h-3 text-emerald-600" />
+                                <span>{p.whatsapp}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Botones de Acción */}
+                        <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                          <button
+                            type="button"
+                            onClick={() => handleEditPartnership(p)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Modificar datos del convenio"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>Editar</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePartnership(p.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                              p.enabled
+                                ? 'bg-amber-100 hover:bg-amber-200 text-amber-800'
+                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            }`}
+                            title={p.enabled ? 'Pausar convenio en la web' : 'Activar convenio en la web'}
+                          >
+                            {p.enabled ? 'Pausar' : 'Activar'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePartnership(p.id, p.businessName)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Eliminar convenio"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

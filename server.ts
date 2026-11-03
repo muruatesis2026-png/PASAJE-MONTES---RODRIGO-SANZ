@@ -97,6 +97,48 @@ const DEFAULT_COUPONS = [
   },
 ];
 
+const DEFAULT_PARTNERSHIPS = [
+  {
+    id: 'part-kyrios',
+    businessName: 'Panadería Kyrios',
+    category: 'Panadería & Cafetería',
+    discountText: '20% OFF en meriendas',
+    details: 'Descuento especial del 20% en combos de meriendas y productos de panificación artesanal seleccionados para huéspedes de Pasaje Montes.',
+    validHours: 'Lunes a Sábados de 16:30 a 20:30 hs',
+    address: 'Av. Sarmiento esq. Eva Perón, Cruz del Eje',
+    whatsapp: '5493549432101',
+    howToRedeem: 'Mencioná tu código de reserva de Pasaje Montes o mostrá tu voucher digital al momento del pedido.',
+    enabled: true,
+    createdAt: '2026-11-01T10:00:00Z',
+  },
+  {
+    id: 'part-regional',
+    businessName: 'Sabores del Valle - Regionales',
+    category: 'Productos Regionales & Olivos',
+    discountText: '15% OFF en aceites y dulces',
+    details: '15% de descuento en aceites de oliva virgen extra de Cruz del Eje, aceitunas marinadas, alfajores y dulces caseros.',
+    validHours: 'Todos los días de 09:00 a 13:00 y de 17:30 a 21:30 hs',
+    address: 'San Martín 450, Centro, Cruz del Eje',
+    whatsapp: '5493549456789',
+    howToRedeem: 'Mostrá tu confirmación de reserva de Pasaje Montes en el mostrador.',
+    enabled: true,
+    createdAt: '2026-11-01T10:00:00Z',
+  },
+  {
+    id: 'part-resto',
+    businessName: 'Restó & Parrilla Don Hipólito',
+    category: 'Gastronomía & Parrilla Tradicional',
+    discountText: 'Copa de vino o postre de cortesía',
+    details: 'Con tu cena o almuerzo, copa de vino de bienvenida o postre tradicional casero sin cargo para todos los integrantes de la reserva.',
+    validHours: 'Miércoles a Domingos de 12:00 a 15:30 y 20:30 a 00:30 hs',
+    address: 'Costanera del Río Cruz del Eje esq. Belgrano',
+    whatsapp: '5493549412345',
+    howToRedeem: 'Presentá tu reserva confirmada al momento de pedir la cuenta.',
+    enabled: true,
+    createdAt: '2026-11-01T10:00:00Z',
+  },
+];
+
 const DEFAULT_SETTINGS = {
   baseNightPrice: 45000,
   price1Guest: 40000,
@@ -106,6 +148,7 @@ const DEFAULT_SETTINGS = {
   blockedDates: [], // Strings array of 'YYYY-MM-DD'
   discountPercentage: 12,
   coupons: DEFAULT_COUPONS,
+  partnerships: DEFAULT_PARTNERSHIPS,
   promoBanner: {
     enabled: true,
     badge: 'Promo 3+ Noches',
@@ -113,7 +156,7 @@ const DEFAULT_SETTINGS = {
     mobileText: 'Bonificación especial a partir de 3 noches.',
     theme: 'emerald',
     icon: 'sparkles',
-    
+    actionText: 'Reservar ahora',
     actionType: 'booking',
   },
 };
@@ -152,6 +195,7 @@ function readSettings() {
       ...DEFAULT_SETTINGS,
       ...parsed,
       coupons: parsed.coupons || DEFAULT_SETTINGS.coupons,
+      partnerships: Array.isArray(parsed.partnerships) ? parsed.partnerships : DEFAULT_SETTINGS.partnerships,
       promoBanner: {
         ...DEFAULT_SETTINGS.promoBanner,
         ...(parsed.promoBanner || {}),

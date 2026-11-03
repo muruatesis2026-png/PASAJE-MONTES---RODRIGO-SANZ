@@ -215,8 +215,11 @@ export default function App() {
           hostSettings={hostSettings}
         />
 
-        {/* Tariffs, Conditions & FAQ */}
-        <TariffsAndRules onOpenBooking={scrollToBooking} />
+        {/* Tariffs, Conditions, FAQ & Commercial Partnerships */}
+        <TariffsAndRules
+          onOpenBooking={scrollToBooking}
+          partnerships={hostSettings.partnerships}
+        />
 
         {/* Location & Cruz del Eje Guide */}
         <LocationSection />

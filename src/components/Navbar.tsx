@@ -90,6 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { label: 'El Departamento & Fotos', href: '#departamento' },
     { label: 'Comodidades', href: '#comodidades' },
     { label: 'Tarifas & Condiciones', href: '#tarifas' },
+    { label: 'Alianzas y Descuentos', href: '#alianzas' },
     { label: 'Ubicación', href: '#ubicacion' },
   ];
 

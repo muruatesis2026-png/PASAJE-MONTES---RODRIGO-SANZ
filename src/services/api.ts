@@ -1,4 +1,4 @@
-import { Reservation, PromoBannerConfig, DiscountCoupon, ActivityLog } from '../types';
+import { Reservation, PromoBannerConfig, DiscountCoupon, CommercialPartnership, ActivityLog } from '../types';
 import { INITIAL_RESERVATIONS } from '../data/lodgingData';
 import { db } from './firebase';
 import {
@@ -42,6 +42,48 @@ export const DEFAULT_COUPONS: DiscountCoupon[] = [
   },
 ];
 
+export const DEFAULT_PARTNERSHIPS: CommercialPartnership[] = [
+  {
+    id: 'part-kyrios',
+    businessName: 'Panadería Kyrios',
+    category: 'Panadería & Cafetería',
+    discountText: '20% OFF en meriendas',
+    details: 'Descuento especial del 20% en combos de meriendas y productos de panificación artesanal seleccionados para huéspedes de Pasaje Montes.',
+    validHours: 'Lunes a Sábados de 16:30 a 20:30 hs',
+    address: 'Av. Sarmiento esq. Eva Perón, Cruz del Eje',
+    whatsapp: '5493549432101',
+    howToRedeem: 'Mencioná tu código de reserva de Pasaje Montes o mostrá tu voucher digital al momento del pedido.',
+    enabled: true,
+    createdAt: '2026-11-01T10:00:00Z',
+  },
+  {
+    id: 'part-regional',
+    businessName: 'Sabores del Valle - Regionales',
+    category: 'Productos Regionales & Olivos',
+    discountText: '15% OFF en aceites y dulces',
+    details: '15% de descuento en aceites de oliva virgen extra de Cruz del Eje, aceitunas marinadas, alfajores y dulces caseros.',
+    validHours: 'Todos los días de 09:00 a 13:00 y de 17:30 a 21:30 hs',
+    address: 'San Martín 450, Centro, Cruz del Eje',
+    whatsapp: '5493549456789',
+    howToRedeem: 'Mostrá tu confirmación de reserva de Pasaje Montes en el mostrador.',
+    enabled: true,
+    createdAt: '2026-11-01T10:00:00Z',
+  },
+  {
+    id: 'part-resto',
+    businessName: 'Restó & Parrilla Don Hipólito',
+    category: 'Gastronomía & Parrilla Tradicional',
+    discountText: 'Copa de vino o postre de cortesía',
+    details: 'Con tu cena o almuerzo, copa de vino de bienvenida o postre tradicional casero sin cargo para todos los integrantes de la reserva.',
+    validHours: 'Miércoles a Domingos de 12:00 a 15:30 y 20:30 a 00:30 hs',
+    address: 'Costanera del Río Cruz del Eje esq. Belgrano',
+    whatsapp: '5493549412345',
+    howToRedeem: 'Presentá tu reserva confirmada al momento de pedir la cuenta.',
+    enabled: true,
+    createdAt: '2026-11-01T10:00:00Z',
+  },
+];
+
 export interface HostSettings {
   baseNightPrice: number;
   price1Guest?: number; // Tarifa por noche para 1 persona
@@ -52,6 +94,7 @@ export interface HostSettings {
   discountPercentage: number;
   promoBanner: PromoBannerConfig;
   coupons?: DiscountCoupon[];
+  partnerships?: CommercialPartnership[];
 }
 
 export function getPricePerNightForGuests(settings?: HostSettings | null, guestsCount: number = 2): number {
@@ -382,6 +425,7 @@ export const api = {
           blockedDates: data.blockedDates ?? [],
           discountPercentage: data.discountPercentage ?? 12,
           coupons: data.coupons || DEFAULT_COUPONS,
+          partnerships: Array.isArray(data.partnerships) ? data.partnerships : DEFAULT_PARTNERSHIPS,
           promoBanner: {
             ...DEFAULT_PROMO_BANNER,
             ...(data.promoBanner || {}),
@@ -400,6 +444,7 @@ export const api = {
           blockedDates: [],
           discountPercentage: 12,
           coupons: DEFAULT_COUPONS,
+          partnerships: DEFAULT_PARTNERSHIPS,
           promoBanner: DEFAULT_PROMO_BANNER,
         };
         await setDoc(doc(db, 'settings', 'hostConfig'), defaultDoc);
@@ -443,6 +488,7 @@ export const api = {
       blockedDates: [],
       discountPercentage: 12,
       coupons: DEFAULT_COUPONS,
+      partnerships: DEFAULT_PARTNERSHIPS,
       promoBanner: DEFAULT_PROMO_BANNER,
     };
   },
@@ -473,6 +519,9 @@ export const api = {
       } else if (settings.coupons) {
         logTitle = `Cupones de descuento actualizados`;
         logDetails = `Total cupones activos: ${settings.coupons.filter((c) => c.enabled).length}`;
+      } else if (settings.partnerships) {
+        logTitle = `Convenios y alianzas comerciales actualizados`;
+        logDetails = `Total convenios activos: ${settings.partnerships.filter((p) => p.enabled).length} de ${settings.partnerships.length}`;
       } else if (settings.promoBanner) {
         logTitle = `Barra superior de promociones modificada`;
         logDetails = `Mensaje: "${settings.promoBanner.badge}: ${settings.promoBanner.text}"`;
@@ -486,6 +535,8 @@ export const api = {
           ? 'cambio_tarifa'
           : settings.coupons
           ? 'creacion_cupon'
+          : settings.partnerships
+          ? 'cambio_alianza'
           : settings.promoBanner
           ? 'cambio_promo'
           : 'general',

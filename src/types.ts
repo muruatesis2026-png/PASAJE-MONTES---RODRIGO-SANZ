@@ -75,6 +75,20 @@ export interface PromoBannerConfig {
   actionType?: 'booking' | 'whatsapp' | 'none';
 }
 
+export interface CommercialPartnership {
+  id: string;
+  businessName: string;
+  category: string;
+  discountText: string;
+  details: string;
+  validHours?: string;
+  address?: string;
+  whatsapp?: string;
+  howToRedeem?: string;
+  enabled: boolean;
+  createdAt?: string;
+}
+
 export interface ActivityLog {
   id: string;
   action:
@@ -86,6 +100,7 @@ export interface ActivityLog {
     | 'cambio_tarifa'
     | 'creacion_cupon'
     | 'cambio_promo'
+    | 'cambio_alianza'
     | 'general';
   title: string;
   details: string;

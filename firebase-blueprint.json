@@ -49,7 +49,8 @@
         "discountPercentage": { "type": "number" },
         "blockedDates": { "type": "array", "items": { "type": "string" } },
         "coupons": { "type": "array" },
-        "promoBanner": { "type": "object" }
+        "promoBanner": { "type": "object" },
+        "partnerships": { "type": "array" }
       }
     },
     "ActivityLog": {
