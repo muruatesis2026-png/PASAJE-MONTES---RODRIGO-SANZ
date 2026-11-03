@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon, DiscountCoupon } from '../types';
+import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon, DiscountCoupon, ActivityLog } from '../types';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
-import { api, HostSettings, DEFAULT_PROMO_BANNER, DEFAULT_COUPONS } from '../services/api';
+import { api, HostSettings, DEFAULT_PROMO_BANNER, DEFAULT_COUPONS, getPricePerNightForGuests } from '../services/api';
 import { formatDate, formatFriendlyDate, getAllUnavailableDates, getDaysDifference, addDays } from '../utils/dateUtils';
+import { generateDepositConfirmationMessage } from '../utils/emailTemplate';
 import { Logo } from './Logo';
 import {
   Lock,
@@ -25,6 +26,7 @@ import {
   Search,
   Filter,
   ShieldAlert,
+  ShieldCheck,
   Save,
   Check,
   Copy,
@@ -48,6 +50,15 @@ import {
   Smartphone,
   Monitor,
   Ticket,
+  History,
+  ClipboardList,
+  LayoutDashboard,
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  Wallet,
+  BedDouble,
+  Activity,
   X,
 } from 'lucide-react';
 
@@ -88,8 +99,8 @@ const PROMO_PRESETS = [
   {
     title: '🏖️ Escapada Fin de Semana',
     badge: 'Escapada Finde',
-    text: 'Desconectate en Cruz del Eje. Departamento completo con cochera cubierta y asador.',
-    mobileText: 'Cochera techada y asador incluidos.',
+    text: 'Desconectate en Cruz del Eje. Departamento completo con cochera cubierta.',
+    mobileText: 'Cochera techada incluida.',
     theme: 'amber' as PromoBannerTheme,
     icon: 'heart' as PromoBannerIcon,
     actionText: 'Ver fechas',
@@ -179,11 +190,20 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     promoBanner: DEFAULT_PROMO_BANNER,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'reservas' | 'nueva' | 'calendario' | 'promos' | 'configuracion'>('calendario');
+  const [activeTab, setActiveTab] = useState<'reservas' | 'nueva' | 'calendario' | 'promos' | 'configuracion' | 'historial'>('calendario');
+
+  // Activity Audit Log state (permanent tracking in Firestore)
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [logFilter, setLogFilter] = useState<'all' | 'create' | 'update' | 'delete' | 'settings'>('all');
+  const [logSearchQuery, setLogSearchQuery] = useState('');
 
   // Deletion modal state (fixes iframe window.confirm blocking bug)
   const [reservationToDelete, setReservationToDelete] = useState<Reservation | null>(null);
   const [isDeletingReservation, setIsDeletingReservation] = useState(false);
+
+  // Email confirmation modal state for seña confirmada
+  const [emailModalReservation, setEmailModalReservation] = useState<Reservation | null>(null);
+  const [emailCopied, setEmailCopied] = useState(false);
 
   // Promo Banner state
   const [promoEnabled, setPromoEnabled] = useState(true);
@@ -220,10 +240,14 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   const [newCheckOut, setNewCheckOut] = useState('');
   const [newGuestsCount, setNewGuestsCount] = useState(2);
   const [newStatus, setNewStatus] = useState<Reservation['status']>('confirmada');
+  const [newStayReason, setNewStayReason] = useState('');
   const [newNotes, setNewNotes] = useState('');
 
   // Settings form state
   const [editPrice, setEditPrice] = useState(45000);
+  const [editPrice1Guest, setEditPrice1Guest] = useState(40000);
+  const [editPrice2Guests, setEditPrice2Guests] = useState(45000);
+  const [editPrice3Guests, setEditPrice3Guests] = useState(52000);
   const [editPin, setEditPin] = useState('2026');
   const [editDiscount, setEditDiscount] = useState(12);
 
@@ -242,15 +266,23 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     if (initial) setIsLoading(true);
     setConnectionStatus('syncing');
     try {
-      const [resList, setts] = await Promise.all([api.getReservations(), api.getSettings()]);
+      const [resList, setts, logs] = await Promise.all([
+        api.getReservations(),
+        api.getSettings(),
+        api.getActivityLogs(),
+      ]);
       setReservations(resList);
       setSettings(setts);
+      setActivityLogs(logs);
       setLastSyncTime(new Date());
       setConnectionStatus('connected');
 
       // Only populate editable form inputs on initial mount, so live background polling doesn't overwrite what Rodrigo is typing
       if (initial) {
         setEditPrice(setts.baseNightPrice);
+        setEditPrice1Guest(setts.price1Guest ?? (setts.baseNightPrice > 5000 ? setts.baseNightPrice - 5000 : setts.baseNightPrice));
+        setEditPrice2Guests(setts.price2Guests ?? setts.baseNightPrice);
+        setEditPrice3Guests(setts.price3Guests ?? Math.round(setts.baseNightPrice * 1.15));
         setEditPin(setts.hostPin);
         setEditDiscount(setts.discountPercentage);
         if (setts.coupons && Array.isArray(setts.coupons)) {
@@ -329,7 +361,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
         setIsAuthenticated(true);
         localStorage.setItem('pasaje_montes_host_auth', 'true');
       } else {
-        setPinError('El PIN ingresado es incorrecto. (PIN predeterminado: 2026)');
+        setPinError('El PIN ingresado es incorrecto.');
       }
     } catch {
       setPinError('Error de verificación. Intentá nuevamente.');
@@ -350,6 +382,13 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       if (updated) {
         setReservations((prev) => prev.map((r) => (r.id === id ? updated : r)));
         showTemporaryNotice(`Estado de la reserva actualizado a "${newStatus === 'confirmada' ? 'Confirmada' : newStatus}".`);
+        api.getActivityLogs().then(setActivityLogs).catch(() => {});
+
+        // If host confirmed deposit received ("confirmada"), open email modal & dispatch confirmation
+        if (newStatus === 'confirmada') {
+          setEmailModalReservation(updated);
+          api.sendConfirmationEmail(updated).catch(() => {});
+        }
       }
     } catch (err) {
       console.error(err);
@@ -364,6 +403,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       if (ok) {
         setReservations((prev) => prev.filter((r) => r.id !== reservationToDelete.id));
         showTemporaryNotice(`✓ Reserva ${reservationToDelete.code} eliminada de la base de datos.`);
+        api.getActivityLogs().then(setActivityLogs).catch(() => {});
       } else {
         showTemporaryNotice('No se pudo eliminar la reserva. Verificá la conexión.');
       }
@@ -378,17 +418,32 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanPin = editPin.trim();
+    if (!cleanPin) {
+      showTemporaryNotice('⚠️ El PIN de seguridad no puede quedar en blanco.');
+      return;
+    }
+
     try {
+      const p1 = Number(editPrice1Guest) || 40000;
+      const p2 = Number(editPrice2Guests) || Number(editPrice) || 45000;
+      const p3 = Number(editPrice3Guests) || 52000;
+
       const updated = await api.updateSettings({
-        baseNightPrice: Number(editPrice),
-        hostPin: editPin.trim() || '2026',
+        baseNightPrice: p2,
+        price1Guest: p1,
+        price2Guests: p2,
+        price3Guests: p3,
+        hostPin: cleanPin,
         discountPercentage: Number(editDiscount),
         coupons,
       });
       setSettings(updated);
-      showTemporaryNotice('Configuración, tarifas y cupones guardados exitosamente en la base de datos.');
+      showTemporaryNotice(`✓ Tarifas guardadas (1 pers: $${p1.toLocaleString('es-AR')} | 2 pers: $${p2.toLocaleString('es-AR')} | 3 pers: $${p3.toLocaleString('es-AR')}). PIN activo: ${cleanPin}`);
+      api.getActivityLogs().then(setActivityLogs).catch(() => {});
     } catch (err) {
       console.error(err);
+      showTemporaryNotice('Error al guardar la configuración.');
     }
   };
 
@@ -567,7 +622,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     const start = new Date(newCheckIn + 'T00:00:00');
     const end = new Date(newCheckOut + 'T00:00:00');
     const nights = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-    const pricePerNight = settings.baseNightPrice;
+    const pricePerNight = getPricePerNightForGuests(settings, newGuestsCount);
     const subtotal = nights * pricePerNight;
     const hasDiscount = nights >= 3;
     const discountAmount = hasDiscount ? Math.round((subtotal * settings.discountPercentage) / 100) : 0;
@@ -582,6 +637,9 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       guestName: newGuestName.trim(),
       guestEmail: newGuestEmail.trim() || 'manual@pasajemontes.com',
       guestPhone: newGuestPhone.trim() || 'No especificado',
+      guestDni: '',
+      guestOrigin: '',
+      stayReason: newStayReason.trim() || '',
       checkIn: newCheckIn,
       checkOut: newCheckOut,
       nights,
@@ -592,6 +650,8 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       subtotal,
       discountAmount,
       discountPercentage: hasDiscount ? settings.discountPercentage : 0,
+      couponCode: '',
+      couponDiscount: 0,
       totalPrice,
       depositAmount,
       balanceDue,
@@ -610,6 +670,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     setNewGuestEmail('');
     setNewCheckIn('');
     setNewCheckOut('');
+    setNewStayReason('');
     setNewNotes('');
   };
 
@@ -626,6 +687,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       'Email',
       'DNI',
       'Origen',
+      'Motivo',
       'Check-in',
       'Check-out',
       'Noches',
@@ -646,6 +708,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       `"${r.guestEmail}"`,
       `"${r.guestDni || ''}"`,
       `"${r.guestOrigin || ''}"`,
+      `"${r.stayReason || ''}"`,
       `"${r.checkIn}"`,
       `"${r.checkOut}"`,
       r.nights,
@@ -708,6 +771,70 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
       );
     });
 
+  // Filtered Activity Audit Logs
+  const filteredActivityLogs = activityLogs
+    .filter((log) => {
+      if (logFilter === 'all') return true;
+      if (logFilter === 'create') return log.action === 'creacion_reserva';
+      if (logFilter === 'update') return log.action === 'modificacion_estado';
+      if (logFilter === 'delete') return log.action === 'eliminacion_reserva';
+      if (logFilter === 'settings') {
+        return (
+          log.action === 'cambio_tarifa' ||
+          log.action === 'creacion_cupon' ||
+          log.action === 'bloqueo_fechas' ||
+          log.action === 'cambio_promo'
+        );
+      }
+      return true;
+    })
+    .filter((log) => {
+      if (!logSearchQuery) return true;
+      const q = logSearchQuery.toLowerCase();
+      return (
+        log.title.toLowerCase().includes(q) ||
+        log.details.toLowerCase().includes(q) ||
+        log.performedBy.toLowerCase().includes(q) ||
+        log.action.toLowerCase().includes(q)
+      );
+    });
+
+  const formatLogDate = (isoStr: string) => {
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return isoStr;
+    }
+  };
+
+  const handleExportLogsCSV = () => {
+    const headers = ['Fecha y Hora', 'Tipo', 'Accion', 'Detalles', 'Responsable'];
+    const rows = activityLogs.map((l) => [
+      `"${formatLogDate(l.timestamp)}"`,
+      `"${l.type}"`,
+      `"${l.title}"`,
+      `"${(l.details || '').replace(/"/g, '""')}"`,
+      `"${l.performedBy}"`,
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Historial_Auditoria_Pasaje_Montes_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showTemporaryNotice('Historial de cambios exportado en CSV.');
+  };
+
   // Host Financial Metrics
   const totalReservations = reservations.length;
   const confirmedList = reservations.filter((r) => r.status === 'confirmada');
@@ -715,6 +842,54 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   const totalIncomeExpected = confirmedList.reduce((acc, curr) => acc + curr.totalPrice, 0);
   const totalDepositsReceived = confirmedList.reduce((acc, curr) => acc + curr.depositAmount, 0);
   const totalNightsBooked = confirmedList.reduce((acc, curr) => acc + curr.nights, 0);
+
+  // Detailed Dashboard Analytics & Chart Calculations
+  const cancelledList = reservations.filter((r) => r.status === 'cancelada');
+  const totalBalancesPending = confirmedList.reduce((acc, curr) => acc + curr.balanceDue, 0);
+  const avgNightsPerStay = confirmedList.length > 0 ? (totalNightsBooked / confirmedList.length).toFixed(1) : '0';
+  const avgStayPrice = confirmedList.length > 0 ? Math.round(totalIncomeExpected / confirmedList.length) : 0;
+
+  // Capacity breakdown (guestsCount: 1, 2, 3)
+  const count1Guest = reservations.filter((r) => r.guestsCount === 1).length;
+  const count2Guests = reservations.filter((r) => r.guestsCount === 2).length;
+  const count3Guests = reservations.filter((r) => r.guestsCount >= 3).length;
+
+  // Monthly revenue stats for Bar Chart
+  const monthlyStats = React.useMemo(() => {
+    const monthsMap: Record<string, { label: string; yearMonth: string; revenue: number; nights: number; count: number }> = {};
+    reservations.forEach((r) => {
+      if (r.checkIn) {
+        const ym = r.checkIn.slice(0, 7); // "YYYY-MM"
+        const [y, m] = ym.split('-');
+        const dateObj = new Date(Number(y), Number(m) - 1, 1);
+        const monthLabel = dateObj.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+        if (!monthsMap[ym]) {
+          monthsMap[ym] = { label: monthLabel.toUpperCase(), yearMonth: ym, revenue: 0, nights: 0, count: 0 };
+        }
+        if (r.status !== 'cancelada') {
+          monthsMap[ym].revenue += r.totalPrice;
+          monthsMap[ym].nights += r.nights;
+          monthsMap[ym].count += 1;
+        }
+      }
+    });
+
+    return Object.values(monthsMap).sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+  }, [reservations]);
+
+  const maxMonthRevenue = Math.max(...monthlyStats.map((m) => m.revenue), 1);
+
+  // Activity breakdown counts for Activity Chart
+  const countCreateLogs = activityLogs.filter((l) => l.action === 'creacion_reserva').length;
+  const countUpdateLogs = activityLogs.filter((l) => l.action === 'modificacion_estado').length;
+  const countDeleteLogs = activityLogs.filter((l) => l.action === 'eliminacion_reserva').length;
+  const countSettingsLogs = activityLogs.filter(
+    (l) =>
+      l.action === 'cambio_tarifa' ||
+      l.action === 'creacion_cupon' ||
+      l.action === 'bloqueo_fechas' ||
+      l.action === 'cambio_promo'
+  ).length;
 
   // 1. PIN LOGIN SCREEN IF NOT AUTHENTICATED
   if (!isAuthenticated) {
@@ -730,7 +905,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                 Acceso privado
               </span>
               <h2 className="text-2xl font-black text-slate-900 mt-1">
-                Panel del AAdministración
+                Panel de Administración
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 Base de datos de reservas de {LODGING_INFO.fullName}.
@@ -1051,15 +1226,22 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
               <Settings className="w-4 h-4" />
               <span>Precios & PIN</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('historial')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 ${
+                activeTab === 'historial'
+                  ? 'bg-[#4D7080] text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4 text-amber-500" />
+              <span>Dashboard ({activityLogs.length})</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={onBackToPublicSite}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
-            >
-              <span>Probar en la Página Pública →</span>
-            </button>
+           
           </div>
         </div>
 
@@ -1369,6 +1551,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                           <h4 className="text-base font-bold text-slate-900">{res.guestName}</h4>
                           <span className="text-xs text-slate-500">
                             {res.guestOrigin || 'Origen no especificado'} · DNI: {res.guestDni || 'N/A'}
+                            {res.stayReason ? ` · Motivo: ${res.stayReason}` : ''}
                           </span>
                         </div>
                       </div>
@@ -1463,12 +1646,22 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                         )}
 
                         {res.status === 'confirmada' && (
-                          <button
-                            onClick={() => handleUpdateStatus(res.id, 'pendiente_sena')}
-                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors"
-                          >
-                            Marcar como Pendiente
-                          </button>
+                          <>
+                            <button
+                              onClick={() => setEmailModalReservation(res)}
+                              className="px-3 py-1.5 bg-[#4D7080] hover:bg-[#375663] text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                              title="Ver o reenviar email de confirmación de seña y bienvenida"
+                            >
+                              <Mail className="w-4 h-4" />
+                              <span>Email Confirmación</span>
+                            </button>
+                            <button
+                              onClick={() => handleUpdateStatus(res.id, 'pendiente_sena')}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors"
+                            >
+                              Marcar Pendiente
+                            </button>
+                          </>
                         )}
 
                         <a
@@ -1585,6 +1778,19 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                     <option value="confirmada">Confirmada (Seña ya cobrada)</option>
                     <option value="pendiente_sena">Pendiente de seña</option>
                   </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Motivo de estadía:
+                  </label>
+                  <input
+                    type="text"
+                    value={newStayReason}
+                    onChange={(e) => setNewStayReason(e.target.value)}
+                    placeholder="Ej: Turismo, descanso, trabajo, visita familiar..."
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl"
+                  />
                 </div>
               </div>
 
@@ -2030,18 +2236,116 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             </div>
 
             <form onSubmit={handleSaveSettings} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Precio Base por Noche (ARS $)
-                </label>
-                <input
-                  type="number"
-                  min={1000}
-                  step={1000}
-                  value={editPrice}
-                  onChange={(e) => setEditPrice(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl font-bold text-slate-900"
-                />
+              {/* Tarifas manuales por cantidad de personas */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>💵</span> Tarifas Base por Noche según Huéspedes (ARS $)
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                    Cotización en tiempo real
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mb-3">
+                  Configurá el valor por noche para cada capacidad. El cotizador de la web calculará automáticamente el monto según la cantidad de personas elegida por el cliente.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* 1 Persona */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm focus-within:border-emerald-500 transition-colors">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-black text-slate-700 flex items-center gap-1">
+                        <span>👤</span> 1 Persona
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Individual</span>
+                    </div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">
+                      Precio por noche (ARS)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">$</span>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={editPrice1Guest}
+                        onChange={(e) => setEditPrice1Guest(Number(e.target.value))}
+                        className="w-full pl-6 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        placeholder="40000"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Ej: ${Number(editPrice1Guest || 40000).toLocaleString('es-AR')} / noche
+                    </p>
+                  </div>
+
+                  {/* 2 Personas */}
+                  <div className="bg-white p-3 rounded-xl border-2 border-emerald-500/30 bg-emerald-50/20 shadow-sm focus-within:border-emerald-500 transition-colors">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-black text-slate-800 flex items-center gap-1">
+                        <span>👥</span> 2 Personas
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Estándar</span>
+                    </div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">
+                      Precio por noche (ARS)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">$</span>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={editPrice2Guests}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setEditPrice2Guests(val);
+                          setEditPrice(val);
+                        }}
+                        className="w-full pl-6 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        placeholder="45000"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Ej: ${Number(editPrice2Guests || 45000).toLocaleString('es-AR')} / noche
+                    </p>
+                  </div>
+
+                  {/* 3 Personas */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm focus-within:border-emerald-500 transition-colors">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-black text-slate-700 flex items-center gap-1">
+                        <span>👥+</span> 3 Personas
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Máx. depto</span>
+                    </div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">
+                      Precio por noche (ARS)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">$</span>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={editPrice3Guests}
+                        onChange={(e) => setEditPrice3Guests(Number(e.target.value))}
+                        className="w-full pl-6 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        placeholder="52000"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Ej: ${Number(editPrice3Guests || 52000).toLocaleString('es-AR')} / noche
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-2.5 p-2 bg-emerald-50 border border-emerald-200/60 rounded-lg flex items-center gap-2 text-[11px] text-emerald-900">
+                  <span className="text-emerald-600 font-bold">ℹ️ En la web:</span>
+                  <span>
+                    El cliente verá los botones <strong>1 pers ($ {Number(editPrice1Guest || 40000).toLocaleString('es-AR')})</strong>, <strong>2 pers ($ {Number(editPrice2Guests || 45000).toLocaleString('es-AR')})</strong> y <strong>3 pers ($ {Number(editPrice3Guests || 52000).toLocaleString('es-AR')})</strong> y el desglose de cotización se ajustará al instante.
+                  </span>
+                </div>
               </div>
 
               <div>
@@ -2059,18 +2363,22 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  PIN Secreto de Acceso al Panel
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>PIN Secreto de Acceso al Panel</span>
+                  <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Único código activo
+                  </span>
                 </label>
                 <input
                   type="text"
                   maxLength={10}
                   value={editPin}
                   onChange={(e) => setEditPin(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl font-mono font-bold tracking-widest text-slate-900"
+                  placeholder="Ej: 8492"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl font-mono font-bold tracking-widest text-slate-900 bg-white"
                 />
-                <span className="text-[11px] text-slate-400 block mt-1">
-                  Este es el PIN que solo vos sabés para entrar a este panel.
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  🔒 Al cambiar y guardar un nuevo PIN, el código anterior queda <strong>invalidado de inmediato</strong> y solo podrás acceder con el nuevo.
                 </span>
               </div>
 
@@ -2259,6 +2567,652 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
             </div>
           </div>
         )}
+
+        {/* TAB 6: DASHBOARD CON MÉTRICAS, GRÁFICOS Y AUDITORÍA PERMANENTE */}
+        {activeTab === 'historial' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Header info card */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#4D7080]/15 text-[#4D7080] border border-[#4D7080]/30">
+                      <LayoutDashboard className="w-3.5 h-3.5" />
+                      Dashboard & Gráficos
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Google Cloud Firestore
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                    <span>Dashboard de Rendimiento & Estadísticas</span>
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1 max-w-2xl">
+                    Visualizá de forma simple e intuitiva los ingresos, evolución mensual, estado de reservas y el registro permanente de cambios en la nube.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const logs = await api.getActivityLogs();
+                      setActivityLogs(logs);
+                      showTemporaryNotice('Datos y gráficos actualizados en vivo.');
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                    title="Actualizar registros y gráficos desde la base de datos"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Actualizar Datos</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportLogsCSV}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-[#4D7080] hover:bg-[#3D5A67] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+                    title="Descargar historial completo en archivo CSV"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Exportar CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* SECCIÓN DE GRÁFICOS VISUALES FÁCILES DE ENTENDER */}
+              <div className="pt-6 space-y-6">
+                {/* 1. KPI Cards Row */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
+                      <span>Ingresos Confirmados</span>
+                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <p className="text-2xl font-black text-slate-900">{formatCurrency(totalIncomeExpected)}</p>
+                    <p className="text-[11px] text-emerald-700 font-medium">
+                      Señas 50%: {formatCurrency(totalDepositsReceived)}
+                    </p>
+                  </div>
+
+                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-slate-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>Total de Reservas</span>
+                      <Users className="w-4 h-4 text-[#4D7080]" />
+                    </div>
+                    <p className="text-2xl font-black text-slate-900">{totalReservations}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {confirmedList.length} confirmadas · {pendingList.length} pendientes
+                    </p>
+                  </div>
+
+                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-slate-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>Noches Vendidas</span>
+                      <BedDouble className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <p className="text-2xl font-black text-purple-900">{totalNightsBooked} noches</p>
+                    <p className="text-[11px] text-purple-700 font-medium">
+                      Promedio: {avgNightsPerStay} noches / estadía
+                    </p>
+                  </div>
+
+                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-slate-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>Tarifa Promedio</span>
+                      <TrendingUp className="w-4 h-4 text-sky-600" />
+                    </div>
+                    <p className="text-2xl font-black text-[#4D7080]">{formatCurrency(avgStayPrice || settings.baseNightPrice)}</p>
+                    <p className="text-[11px] text-slate-500">
+                      Base actual: {formatCurrency(settings.baseNightPrice)} / noche
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Main Charts Grid: Monthly Revenue Bars + Donut Status */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Gráfico 1: Barras de Ingresos por Mes */}
+                  <div className="lg:col-span-7 bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4 text-[#4D7080]" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          Evolución de Ingresos y Estadías por Mes
+                        </h4>
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        Total {monthlyStats.length} {monthlyStats.length === 1 ? 'mes registrado' : 'meses registrados'}
+                      </span>
+                    </div>
+
+                    {monthlyStats.length === 0 ? (
+                      <div className="h-44 flex items-center justify-center text-xs text-slate-400">
+                        No hay reservas con fechas registradas aún.
+                      </div>
+                    ) : (
+                      <div className="pt-4">
+                        <div className="h-44 flex items-end justify-around gap-2 px-2 border-b border-slate-200 pb-2">
+                          {monthlyStats.map((m) => {
+                            const barHeightPercent = Math.max(18, Math.round((m.revenue / maxMonthRevenue) * 100));
+                            return (
+                              <div key={m.yearMonth} className="flex-1 max-w-[90px] flex flex-col items-center gap-1.5 group">
+                                <span className="text-[10px] font-bold text-slate-700 opacity-80 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                  ${Math.round(m.revenue / 1000)}k
+                                </span>
+                                <div className="w-full bg-slate-200/70 rounded-t-xl h-36 flex items-end p-1">
+                                  <div
+                                    style={{ height: `${barHeightPercent}%` }}
+                                    className="w-full bg-gradient-to-t from-[#4D7080] to-emerald-500 rounded-t-lg transition-all duration-500 group-hover:brightness-110 shadow-xs"
+                                    title={`${m.label}: ${formatCurrency(m.revenue)} (${m.nights} noches, ${m.count} reservas)`}
+                                  />
+                                </div>
+                                <span className="text-[11px] font-black text-slate-800">{m.label}</span>
+                                <span className="text-[9px] font-medium text-slate-500">
+                                  {m.nights} n · {m.count} res
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 px-1">
+                          <span className="flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-r from-[#4D7080] to-emerald-500" />
+                            Ingresos confirmados por mes
+                          </span>
+                          <span className="font-semibold text-slate-700">
+                            Pico máximo: {formatCurrency(maxMonthRevenue)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Gráfico 2: Donut Circular de Estados de Reserva */}
+                  <div className="lg:col-span-5 bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PieChart className="w-4 h-4 text-emerald-600" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          Estado de las Reservas
+                        </h4>
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        {totalReservations} en total
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-6 pt-2">
+                      {/* SVG Donut */}
+                      <div className="relative w-36 h-36 shrink-0 flex items-center justify-center">
+                        {(() => {
+                          const total = Math.max(totalReservations, 1);
+                          const C = 226.2; // 2 * pi * 36
+                          const confDash = (confirmedList.length / total) * C;
+                          const pendDash = (pendingList.length / total) * C;
+                          const cancDash = (cancelledList.length / total) * C;
+                          const confPercent = Math.round((confirmedList.length / total) * 100);
+
+                          return (
+                            <>
+                              <svg className="w-36 h-36 -rotate-90 transform" viewBox="0 0 100 100">
+                                {/* Background circle */}
+                                <circle cx="50" cy="50" r="36" fill="transparent" stroke="#E2E8F0" strokeWidth="12" />
+                                {/* Confirmed slice (emerald) */}
+                                {confirmedList.length > 0 && (
+                                  <circle
+                                    cx="50"
+                                    cy="50"
+                                    r="36"
+                                    fill="transparent"
+                                    stroke="#10B981"
+                                    strokeWidth="12"
+                                    strokeDasharray={`${confDash} ${C}`}
+                                    strokeDashoffset="0"
+                                    strokeLinecap="round"
+                                  />
+                                )}
+                                {/* Pending slice (amber) */}
+                                {pendingList.length > 0 && (
+                                  <circle
+                                    cx="50"
+                                    cy="50"
+                                    r="36"
+                                    fill="transparent"
+                                    stroke="#F59E0B"
+                                    strokeWidth="12"
+                                    strokeDasharray={`${pendDash} ${C}`}
+                                    strokeDashoffset={`-${confDash}`}
+                                  />
+                                )}
+                                {/* Cancelled slice (rose) */}
+                                {cancelledList.length > 0 && (
+                                  <circle
+                                    cx="50"
+                                    cy="50"
+                                    r="36"
+                                    fill="transparent"
+                                    stroke="#EF4444"
+                                    strokeWidth="12"
+                                    strokeDasharray={`${cancDash} ${C}`}
+                                    strokeDashoffset={`-${confDash + pendDash}`}
+                                  />
+                                )}
+                              </svg>
+                              <div className="absolute text-center">
+                                <span className="text-xl font-black text-slate-900 block leading-tight">{confPercent}%</span>
+                                <span className="text-[10px] font-bold uppercase text-emerald-700">Confirmadas</span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Legend and progress bars */}
+                      <div className="w-full space-y-2.5 text-xs">
+                        <div className="space-y-1">
+                          <div className="flex justify-between font-semibold">
+                            <span className="flex items-center gap-1.5 text-emerald-800">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                              Confirmadas ({confirmedList.length})
+                            </span>
+                            <span className="font-bold text-slate-800">
+                              {Math.round((confirmedList.length / Math.max(totalReservations, 1)) * 100)}%
+                            </span>
+                          </div>
+                          <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              style={{ width: `${Math.round((confirmedList.length / Math.max(totalReservations, 1)) * 100)}%` }}
+                              className="h-full bg-emerald-500 rounded-full"
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-500 block">Total: {formatCurrency(totalIncomeExpected)}</span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between font-semibold">
+                            <span className="flex items-center gap-1.5 text-amber-800">
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                              Pendientes de seña ({pendingList.length})
+                            </span>
+                            <span className="font-bold text-slate-800">
+                              {Math.round((pendingList.length / Math.max(totalReservations, 1)) * 100)}%
+                            </span>
+                          </div>
+                          <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              style={{ width: `${Math.round((pendingList.length / Math.max(totalReservations, 1)) * 100)}%` }}
+                              className="h-full bg-amber-500 rounded-full"
+                            />
+                          </div>
+                        </div>
+
+                        {cancelledList.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between font-semibold">
+                              <span className="flex items-center gap-1.5 text-rose-800">
+                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                                Canceladas ({cancelledList.length})
+                              </span>
+                              <span className="font-bold text-slate-800">
+                                {Math.round((cancelledList.length / Math.max(totalReservations, 1)) * 100)}%
+                              </span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                              <div
+                                style={{ width: `${Math.round((cancelledList.length / Math.max(totalReservations, 1)) * 100)}%` }}
+                                className="h-full bg-rose-500 rounded-full"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Secondary Charts Grid: Guest Profile + Activity Distribution */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Gráfico 3: Capacidad y Perfil de Huéspedes */}
+                  <div className="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-purple-600" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          Perfil de Huéspedes (Capacidad del Depto)
+                        </h4>
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-500">Máx 3 huéspedes</span>
+                    </div>
+
+                    <div className="space-y-3 pt-1">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-700">Parejas / 2 Personas (Sommier Queen)</span>
+                          <span className="font-bold text-slate-900">
+                            {count2Guests} ({Math.round((count2Guests / Math.max(totalReservations, 1)) * 100)}%)
+                          </span>
+                        </div>
+                        <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            style={{ width: `${Math.round((count2Guests / Math.max(totalReservations, 1)) * 100)}%` }}
+                            className="h-full bg-purple-600 rounded-full"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-700">Familias / 3 Personas (Queen + 1 Plaza)</span>
+                          <span className="font-bold text-slate-900">
+                            {count3Guests} ({Math.round((count3Guests / Math.max(totalReservations, 1)) * 100)}%)
+                          </span>
+                        </div>
+                        <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            style={{ width: `${Math.round((count3Guests / Math.max(totalReservations, 1)) * 100)}%` }}
+                            className="h-full bg-[#4D7080] rounded-full"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-700">Viajero Individual (1 Persona)</span>
+                          <span className="font-bold text-slate-900">
+                            {count1Guest} ({Math.round((count1Guest / Math.max(totalReservations, 1)) * 100)}%)
+                          </span>
+                        </div>
+                        <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            style={{ width: `${Math.round((count1Guest / Math.max(totalReservations, 1)) * 100)}%` }}
+                            className="h-full bg-sky-500 rounded-full"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Gráfico 4: Distribución de Eventos y Auditoría */}
+                  <div className="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-amber-600" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          Distribución de Actividad del Sistema
+                        </h4>
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        {activityLogs.length} eventos registrados
+                      </span>
+                    </div>
+
+                    {/* Stacked multi-color progress bar */}
+                    <div className="space-y-3 pt-1">
+                      <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden flex">
+                        <div
+                          style={{ width: `${(countCreateLogs / Math.max(activityLogs.length, 1)) * 100}%` }}
+                          className="h-full bg-emerald-500"
+                          title={`Nuevas reservas: ${countCreateLogs}`}
+                        />
+                        <div
+                          style={{ width: `${(countUpdateLogs / Math.max(activityLogs.length, 1)) * 100}%` }}
+                          className="h-full bg-sky-500"
+                          title={`Modificaciones: ${countUpdateLogs}`}
+                        />
+                        <div
+                          style={{ width: `${(countSettingsLogs / Math.max(activityLogs.length, 1)) * 100}%` }}
+                          className="h-full bg-amber-500"
+                          title={`Tarifas / Ajustes: ${countSettingsLogs}`}
+                        />
+                        <div
+                          style={{ width: `${(countDeleteLogs / Math.max(activityLogs.length, 1)) * 100}%` }}
+                          className="h-full bg-red-500"
+                          title={`Eliminaciones: ${countDeleteLogs}`}
+                        />
+                      </div>
+
+                      {/* Legend grid */}
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                          <span>Nuevas Reservas: <strong>{countCreateLogs}</strong></span>
+                        </div>
+                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                          <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0" />
+                          <span>Modificaciones: <strong>{countUpdateLogs}</strong></span>
+                        </div>
+                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                          <span>Ajustes / Precios: <strong>{countSettingsLogs}</strong></span>
+                        </div>
+                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+                          <span>Eliminaciones: <strong>{countDeleteLogs}</strong></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Firestore Cloud Storage Summary Banner */}
+              <div className="mt-6 p-4 rounded-2xl bg-gradient-to-r from-slate-900 to-[#1E3A45] text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Base de datos en la nube 100% activa (Firebase Firestore)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    Los datos persisten en Google Cloud: aunque el hosting se reinicie o entres desde tu celular, tus reservas y este historial nunca se borran.
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Total Registros Auditados</span>
+                  <span className="text-2xl font-black text-white">{activityLogs.length}</span>
+                </div>
+              </div>
+
+              {/* Search & Filter Bar */}
+              <div className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={logSearchQuery}
+                    onChange={(e) => setLogSearchQuery(e.target.value)}
+                    placeholder="Buscar por código, huésped, acción o detalle..."
+                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#4D7080]/30 focus:border-[#4D7080]"
+                  />
+                  {logSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setLogSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter buttons */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setLogFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                      logFilter === 'all'
+                        ? 'bg-[#4D7080] text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Todos ({activityLogs.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLogFilter('delete')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                      logFilter === 'delete'
+                        ? 'bg-red-600 text-white shadow-xs'
+                        : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                    }`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Eliminaciones ({activityLogs.filter((l) => l.action === 'eliminacion_reserva').length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLogFilter('create')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                      logFilter === 'create'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                    }`}
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Nuevas Reservas ({activityLogs.filter((l) => l.action === 'creacion_reserva').length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLogFilter('update')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                      logFilter === 'update'
+                        ? 'bg-sky-600 text-white shadow-xs'
+                        : 'bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200'
+                    }`}
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Modificaciones ({activityLogs.filter((l) => l.action === 'modificacion_estado').length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLogFilter('settings')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                      logFilter === 'settings'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+                    }`}
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>Ajustes & Precios</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* List of activity cards */}
+            {filteredActivityLogs.length === 0 ? (
+              <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-xs space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                  <ClipboardList className="w-7 h-7" />
+                </div>
+                <h4 className="text-base font-bold text-slate-800">No hay registros para este filtro</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  {logSearchQuery
+                    ? `No se encontraron coincidencias para "${logSearchQuery}". Probá con otro término.`
+                    : 'A medida que se creen, modifiquen o eliminen reservas, aparecerán listados aquí en orden cronológico.'}
+                </p>
+                {logSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setLogSearchQuery('')}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  >
+                    Limpiar búsqueda
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredActivityLogs.map((log) => {
+                  const isDelete = log.action === 'eliminacion_reserva' || log.type === 'danger';
+                  const isCreate = log.action === 'creacion_reserva' || log.type === 'success';
+                  const isUpdate = log.action === 'modificacion_estado';
+                  const isSettings =
+                    log.action === 'cambio_tarifa' ||
+                    log.action === 'creacion_cupon' ||
+                    log.action === 'bloqueo_fechas' ||
+                    log.action === 'cambio_promo';
+
+                  let badgeBorder = 'border-slate-200 bg-white';
+                  let badgeText = 'text-slate-700';
+                  let badgeLabel = 'ACTIVIDAD';
+                  let iconBg = 'bg-slate-100 text-slate-600';
+                  let IconComponent = ClipboardList;
+
+                  if (isDelete) {
+                    badgeBorder = 'border-red-200 bg-red-50/40 hover:bg-red-50';
+                    badgeText = 'text-red-700 bg-red-100 border-red-200';
+                    badgeLabel = 'REGISTRO ELIMINADO';
+                    iconBg = 'bg-red-100 text-red-600';
+                    IconComponent = Trash2;
+                  } else if (isCreate) {
+                    badgeBorder = 'border-emerald-200 bg-emerald-50/30 hover:bg-emerald-50';
+                    badgeText = 'text-emerald-800 bg-emerald-100 border-emerald-200';
+                    badgeLabel = 'NUEVA RESERVA';
+                    iconBg = 'bg-emerald-100 text-emerald-600';
+                    IconComponent = Plus;
+                  } else if (isUpdate) {
+                    badgeBorder = 'border-sky-200 bg-sky-50/30 hover:bg-sky-50';
+                    badgeText = 'text-sky-800 bg-sky-100 border-sky-200';
+                    badgeLabel = 'CAMBIO DE ESTADO';
+                    iconBg = 'bg-sky-100 text-sky-600';
+                    IconComponent = RefreshCw;
+                  } else if (isSettings) {
+                    badgeBorder = 'border-amber-200 bg-amber-50/30 hover:bg-amber-50';
+                    badgeText = 'text-amber-800 bg-amber-100 border-amber-200';
+                    badgeLabel = 'CONFIGURACIÓN';
+                    iconBg = 'bg-amber-100 text-amber-600';
+                    IconComponent = Settings;
+                  }
+
+                  return (
+                    <div
+                      key={log.id}
+                      className={`p-5 rounded-2xl border transition-all shadow-xs ${badgeBorder}`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-200/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
+                            <IconComponent className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${badgeText}`}>
+                                {badgeLabel}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-500">
+                                Por: <strong className="text-slate-800">{log.performedBy}</strong>
+                              </span>
+                            </div>
+                            <h4 className="text-sm font-bold text-slate-900 mt-0.5">
+                              {log.title}
+                            </h4>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-center">
+                          <div className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{formatLogDate(log.timestamp)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Detail description box */}
+                      <div className="mt-3 p-3 rounded-xl bg-white/80 border border-slate-200/80 text-xs text-slate-700 leading-relaxed font-mono sm:font-sans whitespace-pre-wrap">
+                        {log.details}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Delete Reservation Confirmation Modal (Fixes iframe window.confirm blocking bug) */}
@@ -2323,6 +3277,128 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
           </div>
         </div>
       )}
+
+      {/* MODAL DE CONFIRMACIÓN DE SEÑA & ENVÍO DE EMAIL AL HUÉSPED */}
+      {emailModalReservation && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-block">
+                    ✓ Seña Recibida Confirmada en Base de Datos
+                  </span>
+                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-0.5">
+                    Email de Agradecimiento & Bienvenida al Huésped
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Reserva <strong>{emailModalReservation.code}</strong> para <strong>{emailModalReservation.guestName}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setEmailModalReservation(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Cerrar modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Recipient & Notice */}
+            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-3.5 text-xs text-emerald-950 space-y-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold flex items-center gap-1.5">
+                  <Mail className="w-4 h-4 text-emerald-700" />
+                  Email del Huésped: {emailModalReservation.guestEmail}
+                </span>
+                <span className="bg-emerald-200/70 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded">
+                  Seña Recibida: {formatCurrency(emailModalReservation.depositAmount)}
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Mensaje personalizado listo para enviar. Agradece la seña, confirma las fechas bloqueadas y detalla el ingreso a <strong>Pasaje Montes - Alojamiento</strong>.
+              </p>
+            </div>
+
+            {/* Email Body Preview Box */}
+            <div className="flex-1 overflow-y-auto rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-2.5 font-sans text-xs text-slate-700 max-h-64">
+              <div className="border-b border-slate-200/80 pb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Asunto del Correo:</span>
+                <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                  {generateDepositConfirmationMessage(emailModalReservation).subject}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Contenido del Mensaje de Bienvenida:</span>
+                <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed bg-white p-3 rounded-xl border border-slate-200 select-all">
+                  {generateDepositConfirmationMessage(emailModalReservation).bodyPlain}
+                </pre>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Open in Mail Client */}
+                <a
+                  href={generateDepositConfirmationMessage(emailModalReservation).mailtoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Mail className="w-4 h-4" />
+                  <span>Enviar por Correo (Gmail / Outlook)</span>
+                </a>
+
+                {/* Copy Message */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const msg = generateDepositConfirmationMessage(emailModalReservation);
+                    navigator.clipboard.writeText(msg.bodyPlain);
+                    setEmailCopied(true);
+                    setTimeout(() => setEmailCopied(false), 2500);
+                  }}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  {emailCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  <span>{emailCopied ? '¡Texto Copiado!' : 'Copiar Texto'}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* WhatsApp share */}
+                <a
+                  href={`https://wa.me/${emailModalReservation.guestPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                    generateDepositConfirmationMessage(emailModalReservation).bodyPlain
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+                >
+                  <Phone className="w-4 h-4" />
+                  <span>WhatsApp</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setEmailModalReservation(null)}
+                  className="px-3 py-2 text-slate-500 hover:text-slate-800 text-xs font-semibold cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

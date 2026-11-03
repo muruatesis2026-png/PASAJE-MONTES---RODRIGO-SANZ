@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
 import { Reservation, DiscountCoupon } from '../types';
-import { api, HostSettings } from '../services/api';
+import { api, HostSettings, getPricePerNightForGuests } from '../services/api';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 import {
   getAllUnavailableDates,
@@ -62,6 +62,7 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   const [guestPhone, setGuestPhone] = useState('');
   const [guestDni, setGuestDni] = useState('');
   const [guestOrigin, setGuestOrigin] = useState('');
+  const [stayReason, setStayReason] = useState('');
   const [estimatedArrival, setEstimatedArrival] = useState('16:00 hs');
   const [specialRequests, setSpecialRequests] = useState('');
 
@@ -101,7 +102,7 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
   };
 
   const nights = calculateNights();
-  const pricePerNight = hostSettings?.baseNightPrice || LODGING_INFO.baseNightPrice;
+  const pricePerNight = getPricePerNightForGuests(hostSettings, guestsCount);
   const subtotal = nights * pricePerNight;
 
   // Bonus discount for 3 or more nights (from PDF page 5)
@@ -233,20 +234,21 @@ export const BookingSystem: React.FC<BookingSystemProps> = ({
       guestName: guestName.trim(),
       guestEmail: guestEmail.trim(),
       guestPhone: guestPhone.trim(),
-      guestDni: guestDni.trim() || undefined,
-      guestOrigin: guestOrigin.trim() || undefined,
+      guestDni: guestDni.trim() || '',
+      guestOrigin: guestOrigin.trim() || '',
+      stayReason: stayReason.trim() || '',
       checkIn: checkInDate,
       checkOut: checkOutDate,
       nights,
       guestsCount,
       estimatedArrival,
-      specialRequests: specialReqsWithCoupon || undefined,
+      specialRequests: specialReqsWithCoupon || '',
       pricePerNight,
       subtotal,
       discountAmount: totalDiscountAmount,
       discountPercentage: hasDiscount ? discountPercentage : 0,
-      couponCode: appliedCoupon?.code,
-      couponDiscount: couponDiscountAmount,
+      couponCode: appliedCoupon?.code || '',
+      couponDiscount: couponDiscountAmount || 0,
       totalPrice,
       depositAmount,
       balanceDue,
@@ -330,7 +332,7 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
             <span>Sistema de Reservas en Línea</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Reservá tu estadía en Pasaje Montes
+            Reservá tu estadía
           </h2>
           <p className="text-base text-slate-600">
             Consultá el calendario de disponibilidad en tiempo real. Congelá tu fecha con solo el 50% de seña por transferencia.
@@ -507,23 +509,29 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                     <span className="text-[11px] text-slate-500">Capacidad máxima: 3 personas</span>
                   </label>
                   <div className="grid grid-cols-3 gap-3">
-                    {[1, 2, 3].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setGuestsCount(num)}
-                        className={`py-2.5 px-3 rounded-xl border text-center font-bold text-sm transition-all ${
-                          guestsCount === num
-                            ? 'bg-[#4D7080] text-white border-[#4D7080] shadow-sm'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <span className="block text-base">{num}</span>
-                        <span className="block text-[10px] font-normal mt-0.5">
-                          {num === 1 ? '1 persona' : `${num} personas`}
-                        </span>
-                      </button>
-                    ))}
+                    {[1, 2, 3].map((num) => {
+                      const tierPrice = getPricePerNightForGuests(hostSettings, num);
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => setGuestsCount(num)}
+                          className={`py-2 px-2 rounded-xl border text-center font-bold text-sm transition-all cursor-pointer ${
+                            guestsCount === num
+                              ? 'bg-[#4D7080] text-white border-[#4D7080] shadow-sm'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="block text-base">{num}</span>
+                          <span className="block text-[10px] font-normal mt-0.5">
+                            {num === 1 ? '1 persona' : `${num} personas`}
+                          </span>
+                          <span className={`block text-[11px] font-bold mt-1 ${guestsCount === num ? 'text-emerald-200' : 'text-[#4D7080]'}`}>
+                            {formatCurrency(tierPrice)}/noche
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -578,15 +586,19 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                     <h4 className="text-lg font-bold text-slate-900 mt-1">
                       {nights > 0 ? `${nights} Noche${nights > 1 ? 's' : ''}` : 'Seleccioná fechas'}
                     </h4>
-                    <p className="text-xs text-slate-500">
-                      Tarifa: {formatCurrency(pricePerNight)} / noche
+                    <p className="text-xs text-slate-600 font-medium">
+                      Tarifa: <strong className="text-slate-900 font-bold">{formatCurrency(pricePerNight)}</strong> / noche ({guestsCount} {guestsCount === 1 ? 'persona' : 'personas'})
                     </p>
                   </div>
 
                   {nights > 0 ? (
                     <div className="space-y-3 text-sm">
+                      <div className="flex justify-between text-slate-600 text-xs sm:text-sm">
+                        <span>Tarifa ({guestsCount} {guestsCount === 1 ? 'persona' : 'personas'})</span>
+                        <span className="font-semibold text-slate-800">{formatCurrency(pricePerNight)} / noche</span>
+                      </div>
                       <div className="flex justify-between text-slate-600">
-                        <span>Subtotal ({nights} noches)</span>
+                        <span>Subtotal ({nights} {nights === 1 ? 'noche' : 'noches'})</span>
                         <span className="font-semibold text-slate-800">{formatCurrency(subtotal)}</span>
                       </div>
 
@@ -886,6 +898,19 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                     <option value="A coordinar">A coordinar con Rodrigo</option>
                   </select>
                 </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Motivo de estadía:
+                  </label>
+                  <input
+                    type="text"
+                    value={stayReason}
+                    onChange={(e) => setStayReason(e.target.value)}
+                    placeholder="Ej: Turismo, descanso, trabajo, visita familiar, trámite..."
+                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 text-sm focus:ring-2 focus:ring-[#4D7080] focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>
@@ -971,6 +996,12 @@ Te escribo para enviar el comprobante de transferencia y confirmar la reserva.`;
                     </span>
                   )}
                 </div>
+                {confirmedReservation.stayReason && (
+                  <div className="sm:col-span-2 md:col-span-4 pt-1">
+                    <span className="text-slate-400 font-medium text-[11px]">Motivo de estadía: </span>
+                    <span className="font-semibold text-slate-800 text-xs">{confirmedReservation.stayReason}</span>
+                  </div>
+                )}
               </div>
 
               {/* Bank Details Box */}

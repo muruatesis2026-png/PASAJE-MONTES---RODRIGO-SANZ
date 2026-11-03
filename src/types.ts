@@ -23,6 +23,7 @@ export interface Reservation {
   guestPhone: string;
   guestDni?: string;
   guestOrigin?: string;
+  stayReason?: string;
   checkIn: string; // YYYY-MM-DD
   checkOut: string; // YYYY-MM-DD
   nights: number;
@@ -72,5 +73,24 @@ export interface PromoBannerConfig {
   icon?: PromoBannerIcon;
   actionText?: string;
   actionType?: 'booking' | 'whatsapp' | 'none';
+}
+
+export interface ActivityLog {
+  id: string;
+  action:
+    | 'creacion_reserva'
+    | 'modificacion_estado'
+    | 'eliminacion_reserva'
+    | 'bloqueo_fechas'
+    | 'desbloqueo_fechas'
+    | 'cambio_tarifa'
+    | 'creacion_cupon'
+    | 'cambio_promo'
+    | 'general';
+  title: string;
+  details: string;
+  performedBy: string;
+  timestamp: string;
+  type: 'success' | 'warning' | 'danger' | 'info';
 }
 

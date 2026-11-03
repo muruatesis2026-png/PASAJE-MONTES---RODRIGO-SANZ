@@ -99,6 +99,9 @@ const DEFAULT_COUPONS = [
 
 const DEFAULT_SETTINGS = {
   baseNightPrice: 45000,
+  price1Guest: 40000,
+  price2Guests: 45000,
+  price3Guests: 52000,
   hostPin: '2026', // Rodrigo's default PIN to enter the private admin page
   blockedDates: [], // Strings array of 'YYYY-MM-DD'
   discountPercentage: 12,
@@ -278,6 +281,29 @@ app.post('/api/auth/verify-pin', (req, res) => {
     res.json({ success: true, message: 'Autenticado' });
   } else {
     res.status(401).json({ success: false, message: 'PIN incorrecto' });
+  }
+});
+
+// Confirmation email dispatcher endpoint
+app.post('/api/send-confirmation-email', (req, res) => {
+  try {
+    const { reservation } = req.body;
+    if (!reservation || !reservation.guestEmail) {
+      return res.status(400).json({ error: 'Faltan datos de la reserva o correo del huésped' });
+    }
+
+    console.log(`[CONFIRMACIÓN DE SEÑA] Notificación para ${reservation.guestName} (${reservation.guestEmail}) - Código: ${reservation.code}`);
+    
+    res.json({
+      success: true,
+      message: `Confirmación de seña registrada exitosamente para ${reservation.guestEmail}`,
+      guestEmail: reservation.guestEmail,
+      code: reservation.code,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error('Error in send-confirmation-email:', err);
+    res.status(500).json({ error: 'Error interno al procesar el email de confirmación' });
   }
 });
 

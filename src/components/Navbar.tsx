@@ -87,8 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, []);
 
   const navLinks = [
-    { label: 'El Departamento', href: '#departamento' },
-    { label: 'Galería de Fotos', href: '#galeria' },
+    { label: 'El Departamento & Fotos', href: '#departamento' },
     { label: 'Comodidades', href: '#comodidades' },
     { label: 'Tarifas & Condiciones', href: '#tarifas' },
     { label: 'Ubicación', href: '#ubicacion' },

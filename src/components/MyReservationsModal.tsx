@@ -176,6 +176,13 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
                   </div>
                 </div>
 
+                {res.stayReason && (
+                  <div className="text-xs text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200/80">
+                    <span className="font-bold text-slate-700">Motivo de estadía: </span>
+                    <span>{res.stayReason}</span>
+                  </div>
+                )}
+
                 {res.status === 'confirmada' && (
                   <div className="bg-emerald-50 border border-emerald-200/90 p-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2.5">

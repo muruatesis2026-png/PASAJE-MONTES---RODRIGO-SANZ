@@ -7,7 +7,6 @@ import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { ApartmentOverview } from './components/ApartmentOverview';
-import { PhotoGallery } from './components/PhotoGallery';
 import { AmenitiesSection } from './components/AmenitiesSection';
 import { BookingSystem } from './components/BookingSystem';
 import { TariffsAndRules } from './components/TariffsAndRules';
@@ -193,23 +192,11 @@ export default function App() {
           unavailableDates={unavailableDates}
         />
 
-        {/* The Apartment Overview */}
+        {/* The Apartment Overview & Integrated Photo Gallery */}
         <ApartmentOverview
-          onSelectPhoto={(photoId) => {
-            setSelectedGalleryPhotoId(photoId);
-            const galeriaEl = document.getElementById('galeria');
-            if (galeriaEl) {
-              galeriaEl.scrollIntoView({ behavior: 'smooth' });
-            }
-          }}
           onOpenBooking={scrollToBooking}
-        />
-
-        {/* Photo Gallery with Filter & Lightbox */}
-        <PhotoGallery
           selectedPhotoId={selectedGalleryPhotoId}
           onCloseSelectedPhoto={() => setSelectedGalleryPhotoId(null)}
-          onOpenBooking={scrollToBooking}
         />
 
         {/* Complete Amenities & Confort */}

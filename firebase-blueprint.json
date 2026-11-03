@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "Reservation": {
+      "title": "Reservation",
+      "description": "Guest reservation record for Pasaje Montes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "guestName": { "type": "string" },
+        "guestEmail": { "type": "string" },
+        "guestPhone": { "type": "string" },
+        "guestDni": { "type": "string" },
+        "guestOrigin": { "type": "string" },
+        "stayReason": { "type": "string" },
+        "checkIn": { "type": "string" },
+        "checkOut": { "type": "string" },
+        "nights": { "type": "number" },
+        "guestsCount": { "type": "number" },
+        "estimatedArrival": { "type": "string" },
+        "specialRequests": { "type": "string" },
+        "pricePerNight": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "discountPercentage": { "type": "number" },
+        "couponCode": { "type": "string" },
+        "couponDiscount": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "depositAmount": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "status": {
+          "type": "string",
+          "enum": ["pendiente_sena", "confirmada", "cancelada"]
+        },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["code", "guestName", "checkIn", "checkOut", "status"]
+    },
+    "HostSettings": {
+      "title": "HostSettings",
+      "description": "Global lodging settings, tariffs, blocked dates, and coupons",
+      "type": "object",
+      "properties": {
+        "baseNightPrice": { "type": "number" },
+        "price1Guest": { "type": "number" },
+        "price2Guests": { "type": "number" },
+        "price3Guests": { "type": "number" },
+        "hostPin": { "type": "string" },
+        "discountPercentage": { "type": "number" },
+        "blockedDates": { "type": "array", "items": { "type": "string" } },
+        "coupons": { "type": "array" },
+        "promoBanner": { "type": "object" }
+      }
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Audit trail log of all reservations, edits, deletions, and config changes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "title": { "type": "string" },
+        "details": { "type": "string" },
+        "performedBy": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "required": ["action", "title", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/reservations/{reservationId}": {
+      "schema": "Reservation",
+      "description": "Collection of all lodging reservations"
+    },
+    "/settings/{settingId}": {
+      "schema": "HostSettings",
+      "description": "Lodging configuration, tariffs, and blocked dates"
+    },
+    "/activity_logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Audit log recording every creation, update, and deletion"
+    }
+  }
+}
