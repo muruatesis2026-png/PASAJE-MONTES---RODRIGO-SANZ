@@ -32,12 +32,12 @@ export const LODGING_INFO = {
 };
 
 export const BANK_DETAILS: BankDetails = {
-  banco: 'Banco Santander / Mercado Pago',
-  titular: 'Rodrigo Sanz',
-  alias: 'PASAJE.MONTES.CDE',
-  cbu: '0720262188000036984215',
+  banco: 'Mercado Pago',
+  titular: 'Rodrigo Fabian Sanz',
+  alias: 'apasajemontes',
+  cbu: '0000003100064620823216',
   cuit: '20-38495246-9',
-  tipoCuenta: 'Caja de Ahorro en Pesos',
+  tipoCuenta: 'Billetera Virtual',
 };
 
 export const AMENITIES: Amenity[] = [
