@@ -254,14 +254,21 @@ export const api = {
             updates.status === 'confirmada'
               ? 'Seña del 50% Confirmada'
               : updates.status === 'cancelada'
-              ? 'Reserva Cancelada'
+              ? 'Reserva Cancelada (Fechas Liberadas)'
               : updates.status;
+
+          const logDetails =
+            updates.status === 'cancelada'
+              ? `Reserva Cancelada por el anfitrión. Fechas ${updatedRes.checkIn} al ${updatedRes.checkOut} liberadas nuevamente en la web | Huésped: ${updatedRes.guestName} | Total: $${updatedRes.totalPrice.toLocaleString('es-AR')}`
+              : `Nuevo estado: "${statusLabel}" | Huésped: ${updatedRes.guestName} | Total: $${updatedRes.totalPrice.toLocaleString('es-AR')}`;
 
           await this.logActivity({
             id: `log-${Date.now()}`,
             action: 'modificacion_estado',
-            title: `Estado de reserva ${updatedRes.code} modificado`,
-            details: `Nuevo estado: "${statusLabel}" | Huésped: ${updatedRes.guestName} | Total: $${updatedRes.totalPrice.toLocaleString('es-AR')}`,
+            title: updates.status === 'cancelada'
+              ? `Reserva ${updatedRes.code} Cancelada (Fechas liberadas)`
+              : `Estado de reserva ${updatedRes.code} modificado`,
+            details: logDetails,
             performedBy: 'Rodrigo Sanz (Admin)',
             timestamp: new Date().toISOString(),
             type: updates.status === 'confirmada' ? 'success' : updates.status === 'cancelada' ? 'danger' : 'info',

@@ -140,10 +140,16 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
                     className={`text-xs font-bold px-3 py-1 rounded-full ${
                       res.status === 'confirmada'
                         ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : res.status === 'cancelada'
+                        ? 'bg-red-100 text-red-800 border border-red-300'
                         : 'bg-amber-100 text-amber-800 border border-amber-300'
                     }`}
                   >
-                    {res.status === 'confirmada' ? '✓ Reserva Confirmada' : '⏳ Pendiente de Seña (50%)'}
+                    {res.status === 'confirmada'
+                      ? '✓ Reserva Confirmada'
+                      : res.status === 'cancelada'
+                      ? '✕ Reserva Cancelada'
+                      : '⏳ Pendiente de Seña (50%)'}
                   </span>
                 </div>
 
@@ -223,6 +229,16 @@ export const MyReservationsModal: React.FC<MyReservationsModalProps> = ({
                       >
                         {copiedField === 'alias' ? 'Copiado' : 'Copiar'}
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {res.status === 'cancelada' && (
+                  <div className="bg-red-50 border border-red-200/90 p-3.5 rounded-xl flex items-center gap-2.5 text-xs text-red-900">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <div>
+                      <p className="font-bold">Esta reserva fue cancelada en el sistema.</p>
+                      <p className="text-[11px] text-red-700">Las fechas quedaron liberadas para otros huéspedes. Si tenés consultas o deseás volver a reservar, comunicate con Rodrigo por WhatsApp.</p>
                     </div>
                   </div>
                 )}

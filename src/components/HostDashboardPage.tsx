@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Reservation, PromoBannerConfig, PromoBannerTheme, PromoBannerIcon, DiscountCoupon, ActivityLog } from '../types';
 import { LODGING_INFO, BANK_DETAILS } from '../data/lodgingData';
 import { api, HostSettings, DEFAULT_PROMO_BANNER, DEFAULT_COUPONS, getPricePerNightForGuests } from '../services/api';
-import { formatDate, formatFriendlyDate, getAllUnavailableDates, getDaysDifference, addDays } from '../utils/dateUtils';
+import { formatDate, formatFriendlyDate, getAllUnavailableDates, getDaysDifference, addDays, checkRangeAvailability } from '../utils/dateUtils';
 import { generateDepositConfirmationMessage } from '../utils/emailTemplate';
 import { Logo } from './Logo';
 import {
@@ -59,6 +59,10 @@ import {
   Wallet,
   BedDouble,
   Activity,
+  Receipt,
+  Info,
+  HelpCircle,
+  XCircle,
   X,
 } from 'lucide-react';
 
@@ -200,6 +204,15 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
   // Deletion modal state (fixes iframe window.confirm blocking bug)
   const [reservationToDelete, setReservationToDelete] = useState<Reservation | null>(null);
   const [isDeletingReservation, setIsDeletingReservation] = useState(false);
+
+  // Cancellation modal state (allows host to cancel before or after deposit confirmation and release dates)
+  const [reservationToCancel, setReservationToCancel] = useState<Reservation | null>(null);
+  const [isCancellingReservation, setIsCancellingReservation] = useState(false);
+  const [reactivatingReservationId, setReactivatingReservationId] = useState<string | null>(null);
+
+  // Dashboard Metrics Details Modals
+  const [billingDetailModalOpen, setBillingDetailModalOpen] = useState(false);
+  const [cancelledDetailModalOpen, setCancelledDetailModalOpen] = useState(false);
 
   // Email confirmation modal state for seña confirmada
   const [emailModalReservation, setEmailModalReservation] = useState<Reservation | null>(null);
@@ -413,6 +426,69 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     } finally {
       setIsDeletingReservation(false);
       setReservationToDelete(null);
+    }
+  };
+
+  // Confirm cancel reservation (available before and after confirming deposit)
+  const handleConfirmCancelReservation = async () => {
+    if (!reservationToCancel) return;
+    setIsCancellingReservation(true);
+    try {
+      const updated = await api.updateReservation(reservationToCancel.id, { status: 'cancelada' });
+      if (updated) {
+        setReservations((prev) => prev.map((r) => (r.id === reservationToCancel.id ? updated : r)));
+        showTemporaryNotice(
+          `✓ Reserva ${reservationToCancel.code} cancelada exitosamente. Las fechas (${reservationToCancel.checkIn} al ${reservationToCancel.checkOut}) quedaron liberadas en la web.`
+        );
+        api.getActivityLogs().then(setActivityLogs).catch(() => {});
+      } else {
+        showTemporaryNotice('⚠️ No se pudo cancelar la reserva. Verificá la conexión.');
+      }
+    } catch (err) {
+      console.error(err);
+      showTemporaryNotice('⚠️ Error de conexión al cancelar la reserva.');
+    } finally {
+      setIsCancellingReservation(false);
+      setReservationToCancel(null);
+    }
+  };
+
+  // Reactivate a cancelled reservation
+  const handleReactivateReservation = async (
+    res: Reservation,
+    targetStatus: 'pendiente_sena' | 'confirmada'
+  ) => {
+    setReactivatingReservationId(res.id);
+    try {
+      const otherActiveReservations = reservations.filter(
+        (r) => r.id !== res.id && r.status !== 'cancelada'
+      );
+      const unavailableDates = getAllUnavailableDates(
+        otherActiveReservations,
+        settings.blockedDates
+      );
+
+      const check = checkRangeAvailability(res.checkIn, res.checkOut, unavailableDates);
+      if (!check.available) {
+        showTemporaryNotice(
+          `⚠️ Conflicto de fechas: el rango del ${res.checkIn} al ${res.checkOut} ya está ocupado o bloqueado por otra reserva.`
+        );
+        return;
+      }
+
+      const updated = await api.updateReservation(res.id, { status: targetStatus });
+      if (updated) {
+        setReservations((prev) => prev.map((r) => (r.id === res.id ? updated : r)));
+        showTemporaryNotice(
+          `✓ Reserva ${res.code} reactivada como "${targetStatus === 'confirmada' ? 'Confirmada' : 'Pendiente de seña'}". Fechas reservadas nuevamente en la web.`
+        );
+        api.getActivityLogs().then(setActivityLogs).catch(() => {});
+      }
+    } catch (err) {
+      console.error(err);
+      showTemporaryNotice('Error al reactivar la reserva.');
+    } finally {
+      setReactivatingReservationId(null);
     }
   };
 
@@ -835,17 +911,24 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
     showTemporaryNotice('Historial de cambios exportado en CSV.');
   };
 
-  // Host Financial Metrics
+  // Host Financial Metrics & Facturación
   const totalReservations = reservations.length;
   const confirmedList = reservations.filter((r) => r.status === 'confirmada');
   const pendingList = reservations.filter((r) => r.status === 'pendiente_sena');
-  const totalIncomeExpected = confirmedList.reduce((acc, curr) => acc + curr.totalPrice, 0);
+  const cancelledList = reservations.filter((r) => r.status === 'cancelada');
+
+  // Monto Total Facturado (Reservas Confirmadas)
+  const totalBilledAmount = confirmedList.reduce((acc, curr) => acc + curr.totalPrice, 0);
+  const totalIncomeExpected = totalBilledAmount;
   const totalDepositsReceived = confirmedList.reduce((acc, curr) => acc + curr.depositAmount, 0);
+  const totalBalancesPending = confirmedList.reduce((acc, curr) => acc + curr.balanceDue, 0);
   const totalNightsBooked = confirmedList.reduce((acc, curr) => acc + curr.nights, 0);
 
-  // Detailed Dashboard Analytics & Chart Calculations
-  const cancelledList = reservations.filter((r) => r.status === 'cancelada');
-  const totalBalancesPending = confirmedList.reduce((acc, curr) => acc + curr.balanceDue, 0);
+  // Montos de Reservas Canceladas
+  const totalCancelledAmount = cancelledList.reduce((acc, curr) => acc + curr.totalPrice, 0);
+  const totalCancelledNights = cancelledList.reduce((acc, curr) => acc + curr.nights, 0);
+  const totalCancelledDeposits = cancelledList.reduce((acc, curr) => acc + curr.depositAmount, 0);
+
   const avgNightsPerStay = confirmedList.length > 0 ? (totalNightsBooked / confirmedList.length).toFixed(1) : '0';
   const avgStayPrice = confirmedList.length > 0 ? Math.round(totalIncomeExpected / confirmedList.length) : 0;
 
@@ -1516,6 +1599,16 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                 >
                   Pendientes ({pendingList.length})
                 </button>
+                <button
+                  onClick={() => setStatusFilter('cancelada')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                    statusFilter === 'cancelada'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-red-50 text-red-800 hover:bg-red-100'
+                  }`}
+                >
+                  Canceladas ({cancelledList.length})
+                </button>
               </div>
 
               <div className="relative w-full sm:w-72">
@@ -1569,7 +1662,7 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                           {res.status === 'confirmada'
                             ? '✓ Seña Confirmada'
                             : res.status === 'cancelada'
-                            ? 'Cancelada'
+                            ? '✕ Cancelada · Fechas Libres'
                             : '⏳ Pendiente de Seña'}
                         </span>
 
@@ -1615,6 +1708,15 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                       </div>
                     </div>
 
+                    {res.status === 'cancelada' && (
+                      <div className="p-2.5 rounded-lg bg-red-50/90 border border-red-200 text-xs text-red-800 flex items-center gap-2">
+                        <Ban className="w-4 h-4 text-red-600 shrink-0" />
+                        <span>
+                          <strong>Reserva cancelada:</strong> Las fechas <strong>{res.checkIn} al {res.checkOut}</strong> están <strong>libres y disponibles nuevamente</strong> en la página web pública.
+                        </span>
+                      </div>
+                    )}
+
                     {res.specialRequests && (
                       <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-600">
                         <span className="font-bold text-slate-700">Notas / Peticiones: </span>
@@ -1634,20 +1736,36 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Estado: Pendiente de seña */}
                         {res.status === 'pendiente_sena' && (
-                          <button
-                            onClick={() => handleUpdateStatus(res.id, 'confirmada')}
-                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Confirmar Seña Recibida</span>
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateStatus(res.id, 'confirmada')}
+                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Confirmar Seña Recibida</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setReservationToCancel(res)}
+                              className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-600 hover:text-red-700 border border-red-300 hover:border-red-400 font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                              title="Cancelar esta reserva y liberar las fechas en la web pública"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Cancelar Reserva</span>
+                            </button>
+                          </>
                         )}
 
+                        {/* Estado: Confirmada */}
                         {res.status === 'confirmada' && (
                           <>
                             <button
+                              type="button"
                               onClick={() => setEmailModalReservation(res)}
                               className="px-3 py-1.5 bg-[#4D7080] hover:bg-[#375663] text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
                               title="Ver o reenviar email de confirmación de seña y bienvenida"
@@ -1655,11 +1773,50 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                               <Mail className="w-4 h-4" />
                               <span>Email Confirmación</span>
                             </button>
+
                             <button
+                              type="button"
                               onClick={() => handleUpdateStatus(res.id, 'pendiente_sena')}
-                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors"
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors cursor-pointer"
                             >
                               Marcar Pendiente
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setReservationToCancel(res)}
+                              className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-600 hover:text-red-700 border border-red-300 hover:border-red-400 font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                              title="Cancelar esta reserva y liberar las fechas en la web pública"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Cancelar Reserva</span>
+                            </button>
+                          </>
+                        )}
+
+                        {/* Estado: Cancelada */}
+                        {res.status === 'cancelada' && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={reactivatingReservationId === res.id}
+                              onClick={() => handleReactivateReservation(res, 'pendiente_sena')}
+                              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+                              title="Reactivar reserva en estado pendiente de seña"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Reactivar (Pendiente)</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={reactivatingReservationId === res.id}
+                              onClick={() => handleReactivateReservation(res, 'confirmada')}
+                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+                              title="Reactivar reserva con seña confirmada"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Reactivar (Confirmada)</span>
                             </button>
                           </>
                         )}
@@ -2622,32 +2779,183 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
 
               {/* SECCIÓN DE GRÁFICOS VISUALES FÁCILES DE ENTENDER */}
               <div className="pt-6 space-y-6">
-                {/* 1. KPI Cards Row */}
+                {/* 1. PRINCIPALES MÉTRICAS FINANCIERAS Y FACTURACIÓN */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Card 1: Monto Total Facturado */}
+                  <div className="bg-gradient-to-br from-[#FBF8F3] to-emerald-50/60 p-5 rounded-2xl border-2 border-emerald-300/80 shadow-xs space-y-3 relative overflow-hidden">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                          <span className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                            Monto Total Facturado
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-300">
+                            Ingresos Confirmados
+                          </span>
+                        </div>
+                        <p className="text-3xl font-black text-slate-900 tracking-tight">
+                          {formatCurrency(totalBilledAmount)}
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <DollarSign className="w-5 h-5" />
+                      </div>
+                    </div>
+
+                    {/* Breakdown pill tags */}
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 font-bold text-emerald-900 shadow-2xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        Señas 50% cobradas: {formatCurrency(totalDepositsReceived)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-200 font-bold text-slate-700 shadow-2xs">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        Saldos al ingresar: {formatCurrency(totalBalancesPending)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 bg-emerald-100/70 text-emerald-950 px-2.5 py-1 rounded-lg font-bold text-[11px]">
+                        {confirmedList.length} {confirmedList.length === 1 ? 'reserva confirmada' : 'reservas confirmadas'}
+                      </span>
+                    </div>
+
+                    {/* Explicación clara de qué significa */}
+                    <div className="p-3 bg-white/90 rounded-xl border border-emerald-200/70 text-[11px] text-slate-700 leading-relaxed">
+                      <strong className="text-emerald-950 block mb-0.5 flex items-center gap-1">
+                        <Info className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                        ¿Qué significa este monto?
+                      </strong>
+                      Es el <strong>volumen total de ventas cerrado y confirmado</strong> en Pasaje Montes. Representa la suma íntegra de las estadías vendidas (tanto el 50% ya transferido como el 50% que los huéspedes pagan al ingresar).
+                    </div>
+
+                    {/* Acciones para Monto Total Facturado */}
+                    <div className="pt-1 flex flex-wrap items-center gap-2 border-t border-emerald-200/60">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('reservas');
+                          setStatusFilter('confirmada');
+                        }}
+                        className="flex-1 min-w-[170px] inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors shadow-2xs cursor-pointer"
+                        title="Ver todas las reservas confirmadas que componen esta facturación"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Ver Reservas Confirmadas →</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setBillingDetailModalOpen(true)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                        title="Ver desglose detallado de la facturación"
+                      >
+                        <Receipt className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Detalle de Facturación</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Montos de Reservas Canceladas */}
+                  <div className="bg-gradient-to-br from-[#FBF8F3] to-red-50/60 p-5 rounded-2xl border-2 border-red-300/80 shadow-xs space-y-3 relative overflow-hidden">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-red-600" />
+                          <span className="text-xs font-black uppercase tracking-wider text-red-900">
+                            Montos de Reservas Canceladas
+                          </span>
+                          <span className="text-[10px] font-bold text-red-700 bg-red-100/90 px-2 py-0.5 rounded-full border border-red-300">
+                            Fechas Liberadas
+                          </span>
+                        </div>
+                        <p className="text-3xl font-black text-red-900 tracking-tight">
+                          {formatCurrency(totalCancelledAmount)}
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Ban className="w-5 h-5" />
+                      </div>
+                    </div>
+
+                    {/* Breakdown pill tags */}
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-red-200 font-bold text-red-800 shadow-2xs">
+                        <XCircle className="w-3.5 h-3.5 text-red-600" />
+                        {cancelledList.length} {cancelledList.length === 1 ? 'reserva cancelada' : 'reservas canceladas'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 font-bold text-emerald-800 shadow-2xs">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                        {totalCancelledNights} noches liberadas en la web
+                      </span>
+                      {totalCancelledDeposits > 0 && (
+                        <span className="inline-flex items-center gap-1 bg-red-100/70 text-red-950 px-2.5 py-1 rounded-lg font-bold text-[11px]">
+                          Señas asociadas: {formatCurrency(totalCancelledDeposits)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Explicación clara de qué significa */}
+                    <div className="p-3 bg-white/90 rounded-xl border border-red-200/70 text-[11px] text-slate-700 leading-relaxed">
+                      <strong className="text-red-950 block mb-0.5 flex items-center gap-1">
+                        <Info className="w-3.5 h-3.5 text-red-700 shrink-0" />
+                        ¿Qué significa este monto?
+                      </strong>
+                      Es el importe económico de las reservas que <strong>fueron canceladas</strong> (ya sea antes de abonar la seña o posterior a ella). <strong>No se computa como ingreso</strong> en caja y sus fechas han sido <strong>desbloqueadas automáticamente</strong> para permitir nuevas reservas.
+                    </div>
+
+                    {/* Acciones para Reservas Canceladas */}
+                    <div className="pt-1 flex flex-wrap items-center gap-2 border-t border-red-200/60">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('reservas');
+                          setStatusFilter('cancelada');
+                        }}
+                        className="flex-1 min-w-[170px] inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-colors shadow-2xs cursor-pointer"
+                        title="Ver listado filtrado de reservas canceladas"
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        <span>Ver Reservas Canceladas →</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setCancelledDetailModalOpen(true)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-red-50 text-red-900 border border-red-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                        title="Ver detalle del impacto de las cancelaciones"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5 text-red-700" />
+                        <span>Detalle de Cancelaciones</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Tarjetas Complementarias de Rendimiento */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-emerald-200/80 space-y-1">
                     <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
-                      <span>Ingresos Confirmados</span>
-                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                      <span>Señas Cobradas (50%)</span>
+                      <Wallet className="w-4 h-4 text-emerald-600" />
                     </div>
-                    <p className="text-2xl font-black text-slate-900">{formatCurrency(totalIncomeExpected)}</p>
+                    <p className="text-2xl font-black text-slate-900">{formatCurrency(totalDepositsReceived)}</p>
                     <p className="text-[11px] text-emerald-700 font-medium">
-                      Señas 50%: {formatCurrency(totalDepositsReceived)}
+                      Acreditado en Mercado Pago / Banco
                     </p>
                   </div>
 
-                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-slate-200/80 space-y-1">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                      <span>Total de Reservas</span>
-                      <Users className="w-4 h-4 text-[#4D7080]" />
+                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-amber-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-amber-800">
+                      <span>Saldos a Cobrar al Ingreso</span>
+                      <Clock className="w-4 h-4 text-amber-600" />
                     </div>
-                    <p className="text-2xl font-black text-slate-900">{totalReservations}</p>
-                    <p className="text-[11px] text-slate-500">
-                      {confirmedList.length} confirmadas · {pendingList.length} pendientes
+                    <p className="text-2xl font-black text-slate-900">{formatCurrency(totalBalancesPending)}</p>
+                    <p className="text-[11px] text-amber-700 font-medium">
+                      A percibir en el check-in (llave)
                     </p>
                   </div>
 
-                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-slate-200/80 space-y-1">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                  <div className="bg-[#FBF8F3] p-4 rounded-2xl border border-purple-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-purple-800">
                       <span>Noches Vendidas</span>
                       <BedDouble className="w-4 h-4 text-purple-600" />
                     </div>
@@ -2825,7 +3133,9 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                               className="h-full bg-emerald-500 rounded-full"
                             />
                           </div>
-                          <span className="text-[10px] text-slate-500 block">Total: {formatCurrency(totalIncomeExpected)}</span>
+                          <span className="text-[10px] text-emerald-800 block font-medium">
+                            Facturado: {formatCurrency(totalBilledAmount)} (Señas 50%: {formatCurrency(totalDepositsReceived)})
+                          </span>
                         </div>
 
                         <div className="space-y-1">
@@ -2863,6 +3173,9 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                                 className="h-full bg-rose-500 rounded-full"
                               />
                             </div>
+                            <span className="text-[10px] text-rose-700 block font-medium">
+                              Monto cancelado: {formatCurrency(totalCancelledAmount)} · {totalCancelledNights} noches liberadas
+                            </span>
                           </div>
                         )}
                       </div>
@@ -3278,7 +3591,76 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
         </div>
       )}
 
-      {/* MODAL DE CONFIRMACIÓN DE SEÑA & ENVÍO DE EMAIL AL HUÉSPED */}
+      {/* Cancel Reservation Confirmation Modal (Frees up dates on the public website) */}
+      {reservationToCancel && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Ban className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-bold text-slate-900">
+                ¿Cancelar Reserva y Liberar Fechas?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Al cancelar, las fechas de esta reserva quedarán <strong>nuevamente libres y disponibles en la página web pública</strong> para que otros huéspedes puedan reservar.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2 text-slate-700">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Código de Reserva:</span>
+                <span className="font-mono font-bold text-sm text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                  {reservationToCancel.code}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Huésped:</span>
+                <span className="font-bold text-slate-900">{reservationToCancel.guestName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Fechas a liberar:</span>
+                <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {reservationToCancel.checkIn} al {reservationToCancel.checkOut} ({reservationToCancel.nights} noches)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Estado actual:</span>
+                <span className="font-semibold text-slate-800">
+                  {reservationToCancel.status === 'confirmada' ? '✓ Seña Confirmada' : '⏳ Pendiente de Seña'}
+                </span>
+              </div>
+              {reservationToCancel.status === 'confirmada' && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 space-y-0.5">
+                  <span className="font-bold block">⚠️ Seña previa registrada:</span>
+                  <span>Esta reserva contaba con seña del 50% ({formatCurrency(reservationToCancel.depositAmount)}). Al cancelarla, el estado cambiará a &quot;Cancelada&quot; en la base de datos Firestore y en el Dashboard.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isCancellingReservation}
+                onClick={() => setReservationToCancel(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                No cancelar / Volver
+              </button>
+              <button
+                type="button"
+                disabled={isCancellingReservation}
+                onClick={handleConfirmCancelReservation}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Ban className="w-4 h-4" />
+                <span>{isCancellingReservation ? 'Cancelando...' : 'Sí, Cancelar y Liberar'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {emailModalReservation && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
@@ -3394,6 +3776,247 @@ export const HostDashboardPage: React.FC<HostDashboardPageProps> = ({ onBackToPu
                   Cerrar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLE DE MONTO TOTAL FACTURADO */}
+      {billingDetailModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <Receipt className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-block">
+                    Métricas de Facturación
+                  </span>
+                  <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">
+                    ¿Qué quiere decir &quot;Monto Total Facturado&quot;?
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Desglose económico de las estadías vendidas y confirmadas en Pasaje Montes.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setBillingDetailModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Explanation box */}
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl text-xs text-emerald-950 space-y-2">
+              <h4 className="font-bold flex items-center gap-1.5 text-emerald-900">
+                <Info className="w-4 h-4 text-emerald-700" />
+                Significado y Composición:
+              </h4>
+              <p className="leading-relaxed">
+                El <strong>Monto Total Facturado ({formatCurrency(totalBilledAmount)})</strong> representa el volumen bruto de ventas consolidado de todas las reservas que tienen su <strong>seña confirmada</strong> en la base de datos.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                <div className="p-2.5 rounded-xl bg-white border border-emerald-200 shadow-2xs">
+                  <span className="font-black text-emerald-800 block">1. Señas Cobradas (50%):</span>
+                  <span className="text-slate-700">
+                    <strong>{formatCurrency(totalDepositsReceived)}</strong> ya transferidos y cobrados en tu cuenta de Mercado Pago o bancaria.
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="font-black text-amber-800 block">2. Saldos a Cobrar (50%):</span>
+                  <span className="text-slate-700">
+                    <strong>{formatCurrency(totalBalancesPending)}</strong> a percibir cuando el huésped hace su ingreso (check-in) al departamento.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Confirmed items list */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 max-h-60 pr-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Reservas que componen este monto ({confirmedList.length}):
+              </span>
+              {confirmedList.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl">
+                  Aún no hay reservas confirmadas registradas.
+                </div>
+              ) : (
+                confirmedList.map((res) => (
+                  <div key={res.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold bg-[#4D7080] text-white px-2 py-0.5 rounded text-[10px]">
+                          {res.code}
+                        </span>
+                        <strong className="text-slate-900">{res.guestName}</strong>
+                      </div>
+                      <span className="text-[11px] text-slate-500 block mt-0.5">
+                        {res.checkIn} al {res.checkOut} ({res.nights} noches · {res.guestsCount} pers.)
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="font-black text-slate-900 block">{formatCurrency(res.totalPrice)}</span>
+                      <span className="text-[10px] text-emerald-700 font-semibold">
+                        Seña: {formatCurrency(res.depositAmount)} · Saldo: {formatCurrency(res.balanceDue)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Actions footer */}
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setBillingDetailModalOpen(false);
+                  setActiveTab('reservas');
+                  setStatusFilter('confirmada');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Ir al Listado de Reservas Confirmadas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBillingDetailModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLE DE MONTOS DE RESERVAS CANCELADAS */}
+      {cancelledDetailModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                  <Ban className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-red-700 bg-red-50 px-2 py-0.5 rounded-md border border-red-200 inline-block">
+                    Gestión de Cancelaciones
+                  </span>
+                  <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">
+                    ¿Qué quiere decir &quot;Montos de Reservas Canceladas&quot;?
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Historial de reservas canceladas, impacto contable y liberación de fechas en la web.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCancelledDetailModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Explanation box */}
+            <div className="p-4 bg-red-50/70 border border-red-200/90 rounded-2xl text-xs text-red-950 space-y-2">
+              <h4 className="font-bold flex items-center gap-1.5 text-red-900">
+                <Info className="w-4 h-4 text-red-700" />
+                Significado y Reglas de Funcionamiento:
+              </h4>
+              <p className="leading-relaxed">
+                El <strong>Monto de Reservas Canceladas ({formatCurrency(totalCancelledAmount)})</strong> es la sumatoria del valor económico de todas aquellas solicitudes o estadías que fueron canceladas en el sistema (tanto antes de la seña como después de ella).
+              </p>
+              <div className="space-y-1.5 pt-1 text-[11px] text-slate-700">
+                <div className="p-2.5 rounded-xl bg-white border border-red-200 flex items-start gap-2 shadow-2xs">
+                  <span className="font-bold text-red-700 shrink-0">1. No suma en Facturación:</span>
+                  <span>Este dinero no computa en los ingresos netos de tu propiedad para garantizar estadísticas 100% reales.</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white border border-emerald-200 flex items-start gap-2 shadow-2xs">
+                  <span className="font-bold text-emerald-800 shrink-0">2. Fechas Liberadas en la Web:</span>
+                  <span>Al cancelar la reserva, el sistema desbloquea automáticamente los días <strong>({totalCancelledNights} noches liberadas en total)</strong> en el cotizador y calendario público para que otros huéspedes puedan reservar.</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-start gap-2 shadow-2xs">
+                  <span className="font-bold text-slate-800 shrink-0">3. Posibilidad de Reactivación:</span>
+                  <span>Si el huésped cambia de opinión o fue un error, podés reactivar la reserva en cualquier momento desde la pestaña &quot;Reservas&quot; (siempre que las fechas no hayan sido tomadas por otro cliente).</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cancelled items list */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 max-h-60 pr-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Reservas canceladas ({cancelledList.length}):
+              </span>
+              {cancelledList.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl">
+                  No tenés reservas canceladas registradas en la base de datos.
+                </div>
+              ) : (
+                cancelledList.map((res) => (
+                  <div key={res.id} className="p-3 rounded-xl bg-red-50/40 border border-red-200/80 text-xs flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold bg-red-600 text-white px-2 py-0.5 rounded text-[10px]">
+                          {res.code}
+                        </span>
+                        <strong className="text-slate-900">{res.guestName}</strong>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          ✓ Fechas libres en la web
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 block mt-0.5">
+                        {res.checkIn} al {res.checkOut} ({res.nights} noches liberadas)
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="font-black text-red-900 block">{formatCurrency(res.totalPrice)}</span>
+                      <span className="text-[10px] text-slate-500">
+                        {res.depositAmount > 0 ? `Seña: ${formatCurrency(res.depositAmount)}` : 'Sin seña confirmada'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Actions footer */}
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setCancelledDetailModalOpen(false);
+                  setActiveTab('reservas');
+                  setStatusFilter('cancelada');
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                <span>Ir al Listado de Canceladas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCancelledDetailModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>

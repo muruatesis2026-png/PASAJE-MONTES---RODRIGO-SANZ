@@ -16,6 +16,7 @@ import {
   Send,
   Ticket,
   FileCheck,
+  AlertCircle,
 } from 'lucide-react';
 import { formatFriendlyDate } from '../utils/dateUtils';
 
@@ -33,6 +34,7 @@ export const ReservationVoucherModal: React.FC<ReservationVoucherModalProps> = (
   if (!isOpen || !reservation) return null;
 
   const isConfirmed = reservation.status === 'confirmada';
+  const isCancelled = reservation.status === 'cancelada';
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -137,26 +139,32 @@ Seña: ${formatCurrency(reservation.depositAmount)}`;
             className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
               isConfirmed
                 ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                : isCancelled
+                ? 'bg-red-50/90 border-red-300 text-red-950'
                 : 'bg-amber-50/90 border-amber-300 text-amber-950'
             }`}
           >
             <div className="flex items-center gap-3">
               <div
                 className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
-                  isConfirmed ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                  isConfirmed ? 'bg-emerald-600 text-white' : isCancelled ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'
                 }`}
               >
-                {isConfirmed ? <CheckCircle2 className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
+                {isConfirmed ? <CheckCircle2 className="w-6 h-6" /> : isCancelled ? <AlertCircle className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
               </div>
               <div>
                 <h4 className="text-sm font-extrabold uppercase tracking-wide">
                   {isConfirmed
                     ? '✓ Reserva Confirmada · Seña del 50% Acreditada'
+                    : isCancelled
+                    ? '✕ Reserva Cancelada · Fechas Liberadas'
                     : '⏳ Solicitud Registrada · Pendiente de Seña (50%)'}
                 </h4>
                 <p className="text-xs mt-0.5 opacity-90">
                   {isConfirmed
                     ? 'Tu lugar está 100% asegurado en Pasaje Montes. Presentá este voucher al ingresar.'
+                    : isCancelled
+                    ? 'Esta reserva fue cancelada en el sistema de Pasaje Montes y sus fechas quedaron liberadas.'
                     : 'Para congelar definitivamente tu fecha, transferí el 50% de seña y avisale a Rodrigo por WhatsApp.'}
                 </p>
               </div>
@@ -166,10 +174,12 @@ Seña: ${formatCurrency(reservation.depositAmount)}`;
               className={`px-3 py-1 rounded-full text-xs font-black shrink-0 ${
                 isConfirmed
                   ? 'bg-emerald-200 text-emerald-900 border border-emerald-300'
+                  : isCancelled
+                  ? 'bg-red-200 text-red-900 border border-red-300'
                   : 'bg-amber-200 text-amber-900 border border-amber-300'
               }`}
             >
-              {isConfirmed ? 'CONFIRMADO' : 'PENDIENTE'}
+              {isConfirmed ? 'CONFIRMADO' : isCancelled ? 'CANCELADA' : 'PENDIENTE'}
             </span>
           </div>
 
