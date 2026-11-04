@@ -351,12 +351,6 @@ app.post('/api/send-confirmation-email', (req, res) => {
   }
 });
 
-// Google Search Console Site Verification Endpoint
-app.get('/google6355936dab959e1e.html', (_req, res) => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send('google-site-verification: google6355936dab959e1e.html');
-});
-
 // Setup Vite or static serving
 async function setupServer() {
   const isProd = process.env.NODE_ENV === 'production';

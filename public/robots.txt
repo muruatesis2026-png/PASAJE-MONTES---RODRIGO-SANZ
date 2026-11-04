@@ -1,5 +1,0 @@
-User-agent: *
-Allow: /
-Disallow: /anfitrion
-
-Sitemap: /sitemap.xml
